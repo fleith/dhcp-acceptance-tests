@@ -1,0 +1,56 @@
+name: DHCP Acceptance Tests
+
+# This workflow runs the BDD acceptance tests for the DHCP server
+# using Behave and Scapy.  It starts a DHCP server container via
+# docker compose, runs the tests, and then tears down the container.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install behave scapy
+
+      - name: Start DHCP server container
+        run: |
+          # Launch the DHCP server defined in docker-compose.yml.  The
+          # server uses host networking so that DHCP requests can
+          # broadcast to it.  Note: ``docker compose`` is used instead
+          # of ``docker-compose`` because it is available in recent
+          # versions of the Docker CLI.
+          docker compose -f dhcp_acceptance_tests/docker-compose.yml up -d dhcp-server
+
+      - name: Wait for DHCP server
+        run: sleep 5
+
+      - name: Run Behave tests
+        working-directory: dhcp_acceptance_tests
+        env:
+          # Override the test variables to match the configuration in
+          # dhcp/data/dhcpd.conf.  In this example the server binds to
+          # 192.168.56.1 on eth0.
+          TEST_SERVER_IP: 192.168.56.1
+          TEST_INTERFACE: eth0
+          TEST_SUBNET: 192.168.56.0/24
+          TEST_LEASE_TIME: 120
+        run: behave -f progress
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose -f dhcp_acceptance_tests/docker-compose.yml down

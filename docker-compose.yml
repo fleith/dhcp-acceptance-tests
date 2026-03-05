@@ -1,0 +1,52 @@
+version: "3.9"
+
+# This compose file defines a DHCP server based on the networkboot/dhcpd
+# image.  The server runs in host networking mode so that DHCP
+# broadcasts reach it directly.  It uses a configuration file stored
+# under ``dhcp/data/dhcpd.conf``.
+
+services:
+  dhcp-server:
+    image: networkboot/dhcpd:latest
+    container_name: dhcp-test-server
+    # Host networking is required for DHCP broadcast packets to reach
+    # the server.  Note that host networking only works on Linux.
+    network_mode: host
+    # Run dhcpd on the specified interface (default: eth0).  If your
+    # system uses a different interface name (e.g. enp0s3), update
+    # the value here.  You can also override this on the command line:
+    # docker compose run dhcp-server enp0s3
+    command: ["eth0"]
+    # The DHCPD daemon reads its configuration and leases from /data.
+    volumes:
+      - ./dhcp/data:/data
+    # Some DHCP servers require additional capabilities.  NET_ADMIN
+    # allows the container to bind to privileged ports (67/udp).
+    cap_add:
+      - NET_ADMIN
+    # Privileged mode ensures the server can adjust network settings if
+    # necessary.  Remove this if your environment does not permit
+    # privileged containers.
+    privileged: true
+
+  test-runner:
+    image: python:3.13-slim
+    container_name: dhcp-test-runner
+    network_mode: host
+    privileged: true
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - TEST_SERVER_IP=192.168.65.3
+      - TEST_SUBNET=192.168.65.0/24
+      - TEST_INTERFACE=eth0
+    command: >
+      bash -c "pip install -r requirements.txt -q &&
+               sleep 5 &&
+               python -m behave"
+    depends_on:
+      - dhcp-server
