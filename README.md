@@ -1,5 +1,7 @@
 # DHCP Acceptance Tests
 
+[![DHCP Acceptance Tests](https://github.com/fleith/dhcp-acceptance-tests/actions/workflows/ci.yml/badge.svg)](https://github.com/fleith/dhcp-acceptance-tests/actions/workflows/ci.yml)
+
 This project contains behavior‑driven acceptance tests for a DHCP server.  It uses the [Behave](https://behave.readthedocs.io/) BDD framework for Python and [Scapy](https://scapy.net/) to craft and inspect DHCP packets.
 
 ## Why Python + Behave?
