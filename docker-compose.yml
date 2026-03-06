@@ -2,20 +2,33 @@ services:
   dhcp-server:
     build: ./dhcp
     container_name: dhcp-test-server
-    network_mode: host
     command: ["eth0"]
     cap_add:
       - NET_ADMIN
     privileged: true
+    networks:
+      dhcp-test-net:
+        ipv4_address: 172.29.0.2
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /var/run/dhcpd.pid && ss -ulpn | grep -q ':67'"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+      start_period: 2s
 
   test-runner:
     image: python:3.13-slim
     container_name: dhcp-test-runner
-    network_mode: host
     privileged: true
     cap_add:
       - NET_RAW
       - NET_ADMIN
+    networks:
+      dhcp-test-net:
+        ipv4_address: 172.29.0.3
+    environment:
+      TEST_SERVER_IP: 172.29.0.2
+      TEST_INTERFACE: eth0
     volumes:
       - .:/app
     working_dir: /app
@@ -23,7 +36,14 @@ services:
       bash -c "apt-get update -qq &&
                apt-get install -y --no-install-recommends iproute2 -qq &&
                pip install -r requirements.txt -q &&
-               sleep 5 &&
                python3 run_tests.py"
     depends_on:
-      - dhcp-server
+      dhcp-server:
+        condition: service_healthy
+
+networks:
+  dhcp-test-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24

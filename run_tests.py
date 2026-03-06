@@ -19,14 +19,18 @@ def get_interface_info(iface):
 
 
 iface = os.getenv('TEST_INTERFACE', 'eth0')
-server_ip, subnet = get_interface_info(iface)
+iface_ip, subnet = get_interface_info(iface)
+server_ip = os.getenv('TEST_SERVER_IP', iface_ip)
 
 env = os.environ.copy()
 env.setdefault('TEST_SERVER_IP', server_ip)
 env.setdefault('TEST_SUBNET', subnet)
 env.setdefault('TEST_INTERFACE', iface)
 
-print(f"[test-runner] server_ip={server_ip} subnet={subnet}", flush=True)
+print(
+    f"[test-runner] iface={iface} iface_ip={iface_ip} server_ip={server_ip} subnet={subnet}",
+    flush=True,
+)
 
 result = subprocess.run([sys.executable, '-m', 'behave'] + sys.argv[1:], env=env)
 sys.exit(result.returncode)

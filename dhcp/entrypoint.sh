@@ -48,10 +48,24 @@ NET3="$(echo "$NET" | cut -d. -f1-3)"
 
 mkdir -p /data
 cat > /data/dhcpd.conf << CONF
+# authoritative: send DHCPNAK for addresses this server cannot satisfy
+# (RFC 2131 §4.3.2).  Without this, ISC dhcpd stays silent instead of NAKing.
+authoritative;
+
 default-lease-time 120;
-max-lease-time 600;
+# min = max = default so dhcpd always grants exactly 120 s regardless of
+# whether the client has an existing lease (avoids variable lease_time in
+# DHCPACK that would break T1/T2 percentage checks).
+min-lease-time 120;
+max-lease-time 120;
+# RFC 2131 §4.4.5: T1 = 50% of lease time, T2 = 87.5%
+option dhcp-renewal-time 60;
+option dhcp-rebinding-time 105;
 
 subnet $NET netmask $NETMASK {
+    # Always send broadcast responses so the test-runner's sniffer captures
+    # unicast-destined replies even when the client IP is not configured locally.
+    always-broadcast on;
     range ${NET3}.100 ${NET3}.200;
     option routers ${NET3}.1;
     option subnet-mask $NETMASK;
