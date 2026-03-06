@@ -12,13 +12,19 @@ Behavior-driven acceptance tests for a DHCP server using [Behave](https://behave
 
 ## Running the tests
 
-The recommended way is Docker Compose — it starts the DHCP server and test runner together, with no manual configuration needed:
+The recommended way is Docker Compose - it starts the DHCP server and test runner together, with no manual configuration needed:
 
 ```bash
 docker compose up --abort-on-container-exit --exit-code-from test-runner
 ```
 
-Both containers use `network_mode: host` so DHCP broadcasts reach the server. The server and test runner auto-detect the network interface at startup, so this works on any Linux host.
+Docker Compose uses an isolated bridge network (`dhcp-test-net`) with static container IPs and a DHCP server health check before tests start:
+
+- DHCP server: `172.29.0.2`
+- Test runner: `172.29.0.3`
+- Interface inside both containers: `eth0`
+
+The test runner auto-detects subnet details from `TEST_INTERFACE` and uses `TEST_SERVER_IP` from the environment.
 
 ### Running tests natively (advanced)
 
@@ -38,25 +44,31 @@ TEST_SERVER_IP=<server-ip> TEST_SUBNET=<cidr> TEST_INTERFACE=<iface> sudo -E .ve
 | `TEST_SERVER_IP` | `192.168.56.1` | IP address of the DHCP server |
 | `TEST_INTERFACE` | `eth0` | Network interface for raw packets |
 | `TEST_SUBNET` | `192.168.56.0/24` | Expected lease subnet (for validation) |
-| `TEST_LEASE_TIME` | `60` | Lease duration in seconds |
+| `TEST_LEASE_TIME` | `120` | Lease duration in seconds |
 | `TEST_CLIENT_MAC` | `02:00:00:00:00:01` | Test client MAC address |
 
 ## Project structure
 
 ```
 dhcp-acceptance-tests/
-├── dhcp/
-│   ├── Dockerfile        # Custom dhcpd image with auto-detection entrypoint
-│   └── entrypoint.sh     # Detects eth0 subnet, generates dhcpd.conf, starts dhcpd
-├── features/
-│   ├── dhcp_lease.feature    # Scenarios: obtain lease, release lease
-│   ├── dhcp_renewal.feature  # Scenarios: renew lease, lease expiry
-│   └── steps/
-│       └── dhcp_steps.py     # Scapy-based step definitions
-├── .github/workflows/ci.yml  # GitHub Actions CI
-├── docker-compose.yml        # Runs dhcp-server + test-runner containers
-├── run_tests.py              # Detects network config and invokes behave
-└── requirements.txt
+|-- dhcp/
+|   |-- Dockerfile             # Custom dhcpd image with auto-detection entrypoint
+|   `-- entrypoint.sh          # Detects eth0 subnet, generates dhcpd.conf, starts dhcpd
+|-- features/
+|   |-- dhcp_lease.feature        # Scenarios: obtain lease, release lease
+|   |-- dhcp_renewal.feature      # Scenarios: renew lease, lease expiry
+|   |-- dhcp_options.feature      # DHCP options + T1/T2 validation
+|   |-- dhcp_nak_decline.feature  # DHCPNAK + DHCPDECLINE behavior
+|   |-- dhcp_init_reboot.feature  # INIT-REBOOT behavior
+|   |-- dhcp_inform.feature       # DHCPINFORM behavior
+|   |-- dhcp_address_pool.feature # Address pool/reconnect behavior
+|   |-- environment.py            # Behave hooks for scenario isolation/cleanup
+|   `-- steps/
+|       `-- dhcp_steps.py      # Scapy-based step definitions
+|-- .github/workflows/ci.yml      # GitHub Actions CI
+|-- docker-compose.yml            # Runs dhcp-server + test-runner containers
+|-- run_tests.py                 # Detects network config and invokes behave
+`-- requirements.txt
 ```
 
 ## CI
@@ -66,4 +78,3 @@ GitHub Actions runs the full suite on every push and pull request to `master` us
 ## Next steps
 
 - Add negative scenarios: invalid messages, out-of-scope requests, MAC filtering.
-- Add a health check to `docker-compose.yml` so the test runner waits for dhcpd to be ready instead of sleeping.
