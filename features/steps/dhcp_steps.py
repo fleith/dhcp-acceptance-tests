@@ -316,6 +316,64 @@ def step_then_ack_extension(context):
     context_storage['lease_start'] = time.time()
 
 
+
+@when('the client enters REBINDING state')
+def step_when_enters_rebinding(context):
+    # Explicit state marker used by rebinding edge-case scenarios.
+    context_storage['rebinding_state'] = True
+
+
+@when('the client sends a DHCPREQUEST renewal attempt to an unreachable server')
+def step_when_renew_unreachable(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    offered_ip = context_storage.get('offered_ip')
+    xid = int.from_bytes(os.urandom(4), 'big')
+    unreachable_server = '203.0.113.99'
+    request = (
+        Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
+        IP(src=offered_ip, dst=unreachable_server) /
+        UDP(sport=68, dport=67) /
+        BOOTP(ciaddr=offered_ip, chaddr=_mac_bytes(_client_mac()), xid=xid) /
+        DHCP(options=[
+            ('message-type', 'request'),
+            ('server_id', unreachable_server),
+            ('requested_addr', offered_ip),
+            ('end'),
+        ])
+    )
+    sniffer = _start_dhcp_sniffer(timeout=2)
+    sendp(request, iface=INTERFACE, verbose=False)
+    context_storage['renewal_sniffer'] = sniffer
+    context_storage['transaction_id'] = xid
+
+
+@then('no DHCPACK is received for the renewal attempt')
+def step_then_no_ack_for_renewal(context):
+    xid = context_storage.get('transaction_id')
+    sniffer = context_storage.get('renewal_sniffer')
+    ack_pkts = _dhcp_packets(sniffer, msg_type=5, xid=xid, server_id=DHCP_SERVER_IP)
+    assert not ack_pkts, "Unexpected DHCPACK received for unreachable renewal attempt"
+
+
+@when('the client sends a broadcast DHCPREQUEST to rebind')
+def step_when_send_rebind_request(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    offered_ip = context_storage.get('offered_ip')
+    xid = int.from_bytes(os.urandom(4), 'big')
+    request = (
+        Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
+        IP(src=offered_ip, dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(ciaddr=offered_ip, chaddr=_mac_bytes(_client_mac()), xid=xid, flags=0x8000) /
+        DHCP(options=[('message-type', 'request'), ('end')])
+    )
+    sniffer = _start_dhcp_sniffer()
+    sendp(request, iface=INTERFACE, verbose=False)
+    context_storage['renewal_sniffer'] = sniffer
+    context_storage['transaction_id'] = xid
+
 @when('the lease time elapses without renewal')
 def step_when_time_elapses(context):
     elapsed = time.time() - context_storage.get('lease_start', time.time())
@@ -625,6 +683,7 @@ def step_then_same_ip_offered(context):
     assert offered_ip == released_ip, \
         f"Server offered {offered_ip} but client previously had {released_ip}"
     context_storage['offered_ip'] = offered_ip  # update for the subsequent ACK step
+
 
 
 
