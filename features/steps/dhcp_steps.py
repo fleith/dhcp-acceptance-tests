@@ -694,3 +694,144 @@ def step_then_same_ip_offered(context):
 
 
 
+
+# ---------------------------------------------------------------------------
+# RFC 3046 / RFC 3396 / RFC 6842 coverage
+# ---------------------------------------------------------------------------
+
+@when('a client sends a DHCPDISCOVER with Relay Agent Information option')
+def step_when_discover_with_option82(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    xid = int.from_bytes(os.urandom(4), 'big')
+    # Option 82 payload: sub-option 1 (circuit-id), length 4, value 0x63000001.
+    option82_payload = b'\x01\x04\x63\x00\x00\x01'
+    discover = (
+        Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(_client_mac()), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'discover'),
+            (82, option82_payload),
+            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('end'),
+        ])
+    )
+    sniffer = _start_dhcp_sniffer()
+    sendp(discover, iface=INTERFACE, verbose=False)
+    context_storage['transaction_id'] = xid
+    context_storage['discover_sniffer'] = sniffer
+
+
+@when('a client sends a DHCPDISCOVER with concatenated host-name option fragments')
+def step_when_discover_with_concat_hostname(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    xid = int.from_bytes(os.urandom(4), 'big')
+    discover = (
+        Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(_client_mac()), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'discover'),
+            (12, b'client-'),
+            (12, b'fragmented-hostname'),
+            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('end'),
+        ])
+    )
+    sniffer = _start_dhcp_sniffer()
+    sendp(discover, iface=INTERFACE, verbose=False)
+    context_storage['transaction_id'] = xid
+    context_storage['discover_sniffer'] = sniffer
+
+
+def _dora_with_client_id(client_id_bytes, mac_addr):
+    xid = int.from_bytes(os.urandom(4), 'big')
+    discover = (
+        Ether(src=mac_addr, dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(mac_addr), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'discover'),
+            ('client_id', client_id_bytes),
+            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('end'),
+        ])
+    )
+    discover_sniffer = _start_dhcp_sniffer()
+    sendp(discover, iface=INTERFACE, verbose=False)
+    offer_pkts = _dhcp_packets(discover_sniffer, msg_type=2, xid=xid, server_id=DHCP_SERVER_IP)
+    assert offer_pkts, f"No DHCPOFFER from {DHCP_SERVER_IP}"
+    offered_ip = offer_pkts[0][BOOTP].yiaddr
+
+    request = (
+        Ether(src=mac_addr, dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(mac_addr), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'request'),
+            ('server_id', DHCP_SERVER_IP),
+            ('client_id', client_id_bytes),
+            ('requested_addr', offered_ip),
+            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('end'),
+        ])
+    )
+    request_sniffer = _start_dhcp_sniffer()
+    sendp(request, iface=INTERFACE, verbose=False)
+    ack_pkts = _dhcp_packets(request_sniffer, msg_type=5, xid=xid, server_id=DHCP_SERVER_IP)
+    assert ack_pkts, "No DHCPACK received"
+    return offered_ip
+
+
+@when('a client with a client identifier acquires a lease')
+def step_when_client_id_acquires_lease(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    # Type 255 + opaque bytes: stable identifier independent of hardware address.
+    client_id_bytes = b'\xffrfc6842-client-a'
+    mac1 = _client_mac()
+    lease_ip = _dora_with_client_id(client_id_bytes, mac1)
+    context_storage['rfc6842_client_id'] = client_id_bytes
+    context_storage['rfc6842_first_ip'] = lease_ip
+
+
+@when('the same client identifier is used from a different hardware address')
+def step_when_same_client_id_diff_chaddr(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    client_id_bytes = context_storage.get('rfc6842_client_id')
+    assert client_id_bytes, "Missing RFC 6842 client identifier state"
+    rb = os.urandom(3)
+    mac2 = f"02:00:00:{rb[0]:02x}:{rb[1]:02x}:{rb[2]:02x}"
+    xid = int.from_bytes(os.urandom(4), 'big')
+    discover = (
+        Ether(src=mac2, dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(mac2), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'discover'),
+            ('client_id', client_id_bytes),
+            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('end'),
+        ])
+    )
+    sniffer = _start_dhcp_sniffer()
+    sendp(discover, iface=INTERFACE, verbose=False)
+    offer_pkts = _dhcp_packets(sniffer, msg_type=2, xid=xid, server_id=DHCP_SERVER_IP)
+    assert offer_pkts, f"No DHCPOFFER from {DHCP_SERVER_IP} for second identifier probe"
+    context_storage['rfc6842_second_ip'] = offer_pkts[0][BOOTP].yiaddr
+
+
+@then('the server offers the same IP address for that client identifier')
+def step_then_same_ip_for_client_id(context):
+    ip1 = context_storage.get('rfc6842_first_ip')
+    ip2 = context_storage.get('rfc6842_second_ip')
+    assert ip1 and ip2, "Missing captured offers for RFC 6842 comparison"
+    assert ip1 == ip2, f"Expected same lease for same client-id, got {ip1} then {ip2}"
