@@ -47,27 +47,40 @@ TEST_SERVER_IP=<server-ip> TEST_SUBNET=<cidr> TEST_INTERFACE=<iface> sudo -E .ve
 | `TEST_LEASE_TIME` | `120` | Lease duration in seconds |
 | `TEST_CLIENT_MAC` | `02:00:00:00:00:01` | Test client MAC address |
 
+## Coverage snapshot
+
+Current suite covers key behaviors from:
+
+- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM, NAK/DECLINE handling.
+- **RFC 2132**: required network options and T1/T2 lease timer validation.
+- **RFC 3046**: relay-agent-information (Option 82) request acceptance path.
+- **RFC 3396**: concatenated option fragment acceptance path.
+- **RFC 6842**: client-identifier based lease stability across different hardware addresses.
+
 ## Project structure
 
 ```
 dhcp-acceptance-tests/
 |-- dhcp/
-|   |-- Dockerfile             # Custom dhcpd image with auto-detection entrypoint
-|   `-- entrypoint.sh          # Detects eth0 subnet, generates dhcpd.conf, starts dhcpd
+|   |-- Dockerfile                        # Custom dhcpd image with auto-detection entrypoint
+|   `-- entrypoint.sh                     # Detects eth0 subnet, generates dhcpd.conf, starts dhcpd
 |-- features/
-|   |-- dhcp_lease.feature        # Scenarios: obtain lease, release lease
-|   |-- dhcp_renewal.feature      # Scenarios: renew lease, lease expiry
-|   |-- dhcp_options.feature      # DHCP options + T1/T2 validation
-|   |-- dhcp_nak_decline.feature  # DHCPNAK + DHCPDECLINE behavior
-|   |-- dhcp_init_reboot.feature  # INIT-REBOOT behavior
-|   |-- dhcp_inform.feature       # DHCPINFORM behavior
-|   |-- dhcp_address_pool.feature # Address pool/reconnect behavior
-|   |-- environment.py            # Behave hooks for scenario isolation/cleanup
+|   |-- dhcp_lease.feature                # Lease obtain/release
+|   |-- dhcp_renewal.feature              # Renew, expiry, rebinding edge cases
+|   |-- dhcp_options.feature              # DHCP options + T1/T2 validation
+|   |-- dhcp_nak_decline.feature          # DHCPNAK + DHCPDECLINE behavior
+|   |-- dhcp_init_reboot.feature          # INIT-REBOOT behavior
+|   |-- dhcp_inform.feature               # DHCPINFORM behavior
+|   |-- dhcp_address_pool.feature         # Address pool/reconnect behavior
+|   |-- dhcp_rfc3046_relay_agent.feature  # RFC 3046 Option 82 coverage
+|   |-- dhcp_rfc3396_option_concat.feature# RFC 3396 option concatenation coverage
+|   |-- dhcp_rfc6842_client_identifier.feature # RFC 6842 client-identifier coverage
+|   |-- environment.py                    # Behave hooks for scenario isolation/cleanup
 |   `-- steps/
-|       `-- dhcp_steps.py      # Scapy-based step definitions
-|-- .github/workflows/ci.yml      # GitHub Actions CI
-|-- docker-compose.yml            # Runs dhcp-server + test-runner containers
-|-- run_tests.py                 # Detects network config and invokes behave
+|       `-- dhcp_steps.py                 # Scapy-based step definitions
+|-- .github/workflows/ci.yml              # GitHub Actions CI
+|-- docker-compose.yml                    # Runs dhcp-server + test-runner containers
+|-- run_tests.py                          # Detects network config and invokes behave
 `-- requirements.txt
 ```
 
@@ -77,4 +90,5 @@ GitHub Actions runs the full suite on every push and pull request to `master` us
 
 ## Next steps
 
-- Add negative scenarios: invalid messages, out-of-scope requests, MAC filtering.
+- Expand negative/robustness scenarios: malformed packets, invalid option lengths, and invalid state transitions.
+- Add relay-agent topology tests with a real relay path (not only direct-attach Option 82 injection).
