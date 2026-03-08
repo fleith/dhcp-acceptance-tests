@@ -1,33 +1,63 @@
 #!/usr/bin/env bash
-# Run the DHCP acceptance tests against a server launched in Docker.
+# Run DHCP acceptance tests using docker compose.
 #
-# This script is intended for local development.  It starts the ISC DHCP
-# server container using docker compose, runs the Behave tests, and
-# then shuts the server down.  You can override the test environment
-# variables by exporting them before running this script.
+# Usage:
+#   ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [-- <extra compose args>]
+#
+# Examples:
+#   ./run_dhcp_tests.sh
+#   ./run_dhcp_tests.sh --server kea
+#   ./run_dhcp_tests.sh --server kea -- --build
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 
-echo "[INFO] Starting DHCP server via docker compose…"
-docker compose -f "${PROJECT_ROOT}/docker-compose.yml" up -d dhcp-server
+SERVER="isc-dhcpd"
+EXTRA_ARGS=()
 
-echo "[INFO] Waiting for server to initialize…"
-sleep 5
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --server)
+      [[ $# -ge 2 ]] || { echo "[ERROR] --server requires a value"; exit 2; }
+      SERVER="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      EXTRA_ARGS+=("$@")
+      break
+      ;;
+    *)
+      EXTRA_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
 
-echo "[INFO] Running Behave tests…"
-cd "${PROJECT_ROOT}"
-# Set default values if not already exported.  These should match
-# dhcp/data/dhcpd.conf.
-export TEST_SERVER_IP="${TEST_SERVER_IP:-192.168.56.1}"
-export TEST_INTERFACE="${TEST_INTERFACE:-eth0}"
-export TEST_SUBNET="${TEST_SUBNET:-192.168.56.0/24}"
-export TEST_LEASE_TIME="${TEST_LEASE_TIME:-120}"
-/home/alvaro/dhcp_acceptance_tests/dhcp_acceptance_tests/.venv/bin/behave -f progress
+COMPOSE_FILES=(-f "${PROJECT_ROOT}/docker-compose.yml")
+UP_ARGS=(--abort-on-container-exit --exit-code-from test-runner)
 
-echo "[INFO] Stopping DHCP server…"
-docker compose -f "${PROJECT_ROOT}/docker-compose.yml" down
+case "$SERVER" in
+  isc-dhcpd)
+    ;;
+  kea)
+    COMPOSE_FILES+=(-f "${PROJECT_ROOT}/docker-compose.kea.yml")
+    # Ensure Kea image is built instead of reusing the dhcpd image tag.
+    UP_ARGS+=(--build)
+    ;;
+  *)
+    echo "[ERROR] Unsupported server '$SERVER'. Use 'isc-dhcpd' or 'kea'."
+    exit 2
+    ;;
+esac
 
-echo "[INFO] Tests complete."
+cleanup() {
+  echo "[INFO] Stopping docker compose stack..."
+  docker compose "${COMPOSE_FILES[@]}" down >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+echo "[INFO] Running tests against server: ${SERVER}"
+docker compose "${COMPOSE_FILES[@]}" up "${UP_ARGS[@]}" "${EXTRA_ARGS[@]}"

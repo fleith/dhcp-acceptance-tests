@@ -1,0 +1,12 @@
+services:
+  dhcp-server:
+    image: dhcp-test-server-kea:local
+    build:
+      context: ./kea
+    command: ["eth0"]
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ulpn | grep -q ':67'"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+      start_period: 2s
