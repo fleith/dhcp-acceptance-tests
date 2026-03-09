@@ -2,50 +2,65 @@
 
 [![DHCP Acceptance Tests](https://github.com/fleith/dhcp-acceptance-tests/actions/workflows/ci.yml/badge.svg)](https://github.com/fleith/dhcp-acceptance-tests/actions/workflows/ci.yml)
 
-Behavior-driven acceptance tests for a DHCP server using [Behave](https://behave.readthedocs.io/) and [Scapy](https://scapy.net/).
+Behavior-driven acceptance tests for DHCP servers using [Behave](https://behave.readthedocs.io/) and [Scapy](https://scapy.net/).
 
 ## Why Python + Behave?
 
 - **BDD support:** Gherkin (Given/When/Then) makes DHCP scenarios read as executable requirements.
-- **Rich networking libraries:** Scapy provides full control over DHCP packet construction and capture.
+- **Rich networking libraries:** Scapy provides full control over packet construction and capture.
 - **CI-friendly:** Runs entirely in Docker, no host configuration required.
 
 ## Running the tests
 
-The recommended way is Docker Compose - it starts the DHCP server and test runner together, with no manual configuration needed:
+The recommended entrypoint is the helper script:
 
 ```bash
+./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual]
+```
+
+Examples:
+
+```bash
+# Default: ISC DHCPv4
+./run_dhcp_tests.sh
+
+# Kea DHCPv4
+./run_dhcp_tests.sh --server kea
+
+# ISC DHCPv6
+./run_dhcp_tests.sh --ip-version v6
+
+# Run both v4 and v6 for one server
+./run_dhcp_tests.sh --server isc-dhcpd --ip-version dual
+```
+
+The script composes the correct Docker files and always tears down the stack after each run.
+
+Note: `--server kea --ip-version v6` is currently unsupported in this topology due a Kea DHCPv6 socket bind limitation on Docker bridge networking.
+
+### Direct Docker Compose runs (advanced)
+
+```bash
+# DHCPv4 (ISC default)
 docker compose up --abort-on-container-exit --exit-code-from test-runner
+
+# DHCPv6 (ISC)
+docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-container-exit --exit-code-from test-runner
+
 ```
 
-Docker Compose uses an isolated bridge network (`dhcp-test-net`) with static container IPs and a DHCP server health check before tests start:
-
-- DHCP server: `172.29.0.2`
-- Test runner: `172.29.0.3`
-- Interface inside both containers: `eth0`
-
-The test runner auto-detects subnet details from `TEST_INTERFACE` and uses `TEST_SERVER_IP` from the environment.
-
-### Running tests natively (advanced)
-
-If you want to run tests directly on the host against an already-running DHCP server:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Requires root for raw packet I/O
-TEST_SERVER_IP=<server-ip> TEST_SUBNET=<cidr> TEST_INTERFACE=<iface> sudo -E .venv/bin/python3 -m behave
-```
+## Test environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `TEST_SERVER_IP` | `192.168.56.1` | IP address of the DHCP server |
-| `TEST_INTERFACE` | `eth0` | Network interface for raw packets |
-| `TEST_SUBNET` | `192.168.56.0/24` | Expected lease subnet (for validation) |
+| `TEST_IP_VERSION` | `v4` | Test mode: `v4`, `v6`, or `dual` |
+| `TEST_SERVER_IP` | `172.29.0.2` | DHCPv4 server IP |
+| `TEST_SERVER_IPV6` | `fd00:29::2` | DHCPv6 server IP |
+| `TEST_INTERFACE` | `eth0` | Interface used for raw packets |
+| `TEST_SUBNET` | detected from interface | Expected DHCPv4 lease subnet |
+| `TEST_SUBNET_V6` | detected from interface | Expected DHCPv6 lease subnet |
 | `TEST_LEASE_TIME` | `120` | Lease duration in seconds |
-| `TEST_CLIENT_MAC` | `02:00:00:00:00:01` | Test client MAC address |
+| `TEST_CLIENT_MAC` | `02:00:00:00:00:01` | Fallback DHCPv4 client MAC |
 
 ## Coverage snapshot
 
@@ -56,39 +71,50 @@ Current suite covers key behaviors from:
 - **RFC 3046**: relay-agent-information (Option 82) request acceptance path.
 - **RFC 3396**: concatenated option fragment acceptance path.
 - **RFC 6842**: client-identifier based lease stability across different hardware addresses.
+- **RFC 8415**: DHCPv6 SOLICIT/ADVERTISE/REQUEST/REPLY and RENEW acceptance paths.
 
 ## Project structure
 
 ```
 dhcp-acceptance-tests/
 |-- dhcp/
-|   |-- Dockerfile                        # Custom dhcpd image with auto-detection entrypoint
-|   `-- entrypoint.sh                     # Detects eth0 subnet, generates dhcpd.conf, starts dhcpd
+|   |-- Dockerfile
+|   |-- entrypoint.sh
+|   `-- entrypoint_v6.sh
+|-- kea/
+|   |-- Dockerfile
+|   |-- entrypoint.sh
+|   `-- entrypoint_v6.sh
 |-- features/
-|   |-- dhcp_lease.feature                # Lease obtain/release
-|   |-- dhcp_renewal.feature              # Renew, expiry, rebinding edge cases
-|   |-- dhcp_options.feature              # DHCP options + T1/T2 validation
-|   |-- dhcp_nak_decline.feature          # DHCPNAK + DHCPDECLINE behavior
-|   |-- dhcp_init_reboot.feature          # INIT-REBOOT behavior
-|   |-- dhcp_inform.feature               # DHCPINFORM behavior
-|   |-- dhcp_address_pool.feature         # Address pool/reconnect behavior
-|   |-- dhcp_rfc3046_relay_agent.feature  # RFC 3046 Option 82 coverage
-|   |-- dhcp_rfc3396_option_concat.feature# RFC 3396 option concatenation coverage
-|   |-- dhcp_rfc6842_client_identifier.feature # RFC 6842 client-identifier coverage
-|   |-- environment.py                    # Behave hooks for scenario isolation/cleanup
+|   |-- dhcp_lease.feature
+|   |-- dhcp_renewal.feature
+|   |-- dhcp_options.feature
+|   |-- dhcp_nak_decline.feature
+|   |-- dhcp_init_reboot.feature
+|   |-- dhcp_inform.feature
+|   |-- dhcp_address_pool.feature
+|   |-- dhcp_rfc3046_relay_agent.feature
+|   |-- dhcp_rfc3396_option_concat.feature
+|   |-- dhcp_rfc6842_client_identifier.feature
+|   |-- dhcpv6_lease.feature
+|   |-- environment.py
 |   `-- steps/
-|       `-- dhcp_steps.py                 # Scapy-based step definitions
-|-- .github/workflows/ci.yml              # GitHub Actions CI
-|-- docker-compose.yml                    # Runs dhcp-server + test-runner containers
-|-- run_tests.py                          # Detects network config and invokes behave
+|       |-- dhcp_steps.py
+|       `-- dhcpv6_steps.py
+|-- docker-compose.yml
+|-- docker-compose.kea.yml
+|-- docker-compose.ipv6.yml
+|-- run_dhcp_tests.sh
+|-- run_tests.py
+|-- .github/workflows/ci.yml
 `-- requirements.txt
 ```
 
 ## CI
 
-GitHub Actions runs the full suite on every push and pull request to `master` using the same `docker compose` command as local development. See [Actions](https://github.com/fleith/dhcp-acceptance-tests/actions).
+GitHub Actions runs the supported matrix:
 
-## Next steps
+- `isc-dhcpd` with `v4` and `v6`
+- `kea` with `v4`
 
-- Expand negative/robustness scenarios: malformed packets, invalid option lengths, and invalid state transitions.
-- Add relay-agent topology tests with a real relay path (not only direct-attach Option 82 injection).
+Kea DHCPv6 is currently excluded due a Docker bridge link-local socket limitation.

@@ -1,0 +1,36 @@
+services:
+  dhcp-server:
+    entrypoint: ["/entrypoint_v6.sh"]
+    command: ["eth0"]
+    environment:
+      DHCPV6_SUBNET: fd00:29::/64
+      DHCPV6_RANGE_START: fd00:29::100
+      DHCPV6_RANGE_END: fd00:29::1ff
+      DHCPV6_POOL: fd00:29::100 - fd00:29::1ff
+      DHCPV6_DNS: 2001:4860:4860::8888
+    networks:
+      dhcp-test-net:
+        ipv6_address: fd00:29::2
+    healthcheck:
+      test: ["CMD-SHELL", "ss -H -ulnp | grep -q ':547'"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+      start_period: 2s
+
+  test-runner:
+    networks:
+      dhcp-test-net:
+        ipv6_address: fd00:29::3
+    environment:
+      TEST_IP_VERSION: v6
+      TEST_SERVER_IPV6: fd00:29::2
+      TEST_INTERFACE: eth0
+
+networks:
+  dhcp-test-net:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
+        - subnet: fd00:29::/64

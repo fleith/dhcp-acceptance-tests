@@ -9,12 +9,22 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - server: isc-dhcpd
+            ip_version: v4
+          - server: isc-dhcpd
+            ip_version: v6
+          - server: kea
+            ip_version: v4
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Run tests
-        run: docker compose up --abort-on-container-exit --exit-code-from test-runner
+        run: ./run_dhcp_tests.sh --server ${{ matrix.server }} --ip-version ${{ matrix.ip_version }}
 
       - name: Tear down containers
         if: always()

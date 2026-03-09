@@ -43,7 +43,7 @@ EOF
 NET="$(( i1 & m1 )).$(( i2 & m2 )).$(( i3 & m3 )).$(( i4 & m4 ))"
 NET3="$(echo "$NET" | cut -d. -f1-3)"
 
-mkdir -p /etc/kea /data /run/kea /var/run/kea
+mkdir -p /etc/kea /data /run/kea /var/run/kea /var/lib/kea
 cat > /etc/kea/kea-dhcp4.conf << CONF
 {
   "Dhcp4": {
