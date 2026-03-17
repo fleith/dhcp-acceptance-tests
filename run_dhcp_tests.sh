@@ -2,13 +2,13 @@
 # Run DHCP acceptance tests using docker compose.
 #
 # Usage:
-#   ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual] [-- <extra compose args>]
+#   bash ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual] [-- <extra compose args>]
 #
 # Examples:
-#   ./run_dhcp_tests.sh
-#   ./run_dhcp_tests.sh --server kea
-#   ./run_dhcp_tests.sh --ip-version v6
-#   ./run_dhcp_tests.sh --server kea --ip-version dual
+#   bash ./run_dhcp_tests.sh
+#   bash ./run_dhcp_tests.sh --server kea
+#   bash ./run_dhcp_tests.sh --ip-version v6
+#   bash ./run_dhcp_tests.sh --server kea --ip-version dual
 
 set -euo pipefail
 

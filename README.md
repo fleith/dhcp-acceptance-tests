@@ -15,23 +15,23 @@ Behavior-driven acceptance tests for DHCP servers using [Behave](https://behave.
 The recommended entrypoint is the helper script:
 
 ```bash
-./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual]
+bash ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual]
 ```
 
 Examples:
 
 ```bash
 # Default: ISC DHCPv4
-./run_dhcp_tests.sh
+bash ./run_dhcp_tests.sh
 
 # Kea DHCPv4
-./run_dhcp_tests.sh --server kea
+bash ./run_dhcp_tests.sh --server kea
 
 # ISC DHCPv6
-./run_dhcp_tests.sh --ip-version v6
+bash ./run_dhcp_tests.sh --ip-version v6
 
 # Run both v4 and v6 for one server
-./run_dhcp_tests.sh --server isc-dhcpd --ip-version dual
+bash ./run_dhcp_tests.sh --server isc-dhcpd --ip-version dual
 ```
 
 The script composes the correct Docker files and always tears down the stack after each run.

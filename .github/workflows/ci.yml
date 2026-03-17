@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run tests
-        run: ./run_dhcp_tests.sh --server ${{ matrix.server }} --ip-version ${{ matrix.ip_version }}
+        run: bash ./run_dhcp_tests.sh --server ${{ matrix.server }} --ip-version ${{ matrix.ip_version }}
 
       - name: Tear down containers
         if: always()
