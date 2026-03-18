@@ -120,6 +120,10 @@ def _subnet_prefixlen():
     return ipaddress.ip_network(SUBNET, strict=False).prefixlen
 
 
+def _subnet_network_bytes():
+    return ipaddress.ip_network(SUBNET, strict=False).network_address.packed
+
+
 def _interface_has_ipv4(ipv4_addr):
     try:
         out = subprocess.check_output(
@@ -696,8 +700,32 @@ def step_then_same_ip_offered(context):
 
 
 # ---------------------------------------------------------------------------
-# RFC 3046 / RFC 3396 / RFC 6842 coverage
+# RFC 3011 / RFC 3046 / RFC 3396 / RFC 6842 coverage
 # ---------------------------------------------------------------------------
+
+@when('a client sends a DHCPDISCOVER with Subnet Selection option for the served subnet')
+def step_when_discover_with_subnet_selection(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    xid = int.from_bytes(os.urandom(4), 'big')
+    discover = (
+        Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(_client_mac()), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'discover'),
+            # RFC 3011 option 118 carries the selected subnet address.
+            (118, _subnet_network_bytes()),
+            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('end'),
+        ])
+    )
+    sniffer = _start_dhcp_sniffer()
+    sendp(discover, iface=INTERFACE, verbose=False)
+    context_storage['transaction_id'] = xid
+    context_storage['discover_sniffer'] = sniffer
+
 
 @when('a client sends a DHCPDISCOVER with Relay Agent Information option')
 def step_when_discover_with_option82(context):

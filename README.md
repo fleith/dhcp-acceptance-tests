@@ -68,6 +68,7 @@ Current suite covers key behaviors from:
 
 - **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM, NAK/DECLINE handling.
 - **RFC 2132**: required network options and T1/T2 lease timer validation.
+- **RFC 3011**: Subnet Selection Option (option 118) request acceptance path.
 - **RFC 3046**: relay-agent-information (Option 82) request acceptance path.
 - **RFC 3396**: concatenated option fragment acceptance path.
 - **RFC 6842**: client-identifier based lease stability across different hardware addresses.
@@ -93,6 +94,7 @@ dhcp-acceptance-tests/
 |   |-- dhcp_init_reboot.feature
 |   |-- dhcp_inform.feature
 |   |-- dhcp_address_pool.feature
+|   |-- dhcp_rfc3011_subnet_selection.feature
 |   |-- dhcp_rfc3046_relay_agent.feature
 |   |-- dhcp_rfc3396_option_concat.feature
 |   |-- dhcp_rfc6842_client_identifier.feature
