@@ -714,7 +714,7 @@ def step_then_same_ip_offered(context):
 
 
 # ---------------------------------------------------------------------------
-# RFC 3011 / RFC 3046 / RFC 3396 / RFC 6842 coverage
+# RFC 3011 / RFC 3046 / RFC 3396 / RFC 4702 / RFC 6842 coverage
 # ---------------------------------------------------------------------------
 
 @when('a client sends a DHCPDISCOVER with Subnet Selection option for the served subnet')
@@ -877,6 +877,35 @@ def step_when_discover_with_concat_hostname(context):
             ('message-type', 'discover'),
             (12, b'client-'),
             (12, b'fragmented-hostname'),
+            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('end'),
+        ])
+    )
+    sniffer = _start_dhcp_sniffer()
+    sendp(discover, iface=INTERFACE, verbose=False)
+    context_storage['transaction_id'] = xid
+    context_storage['discover_sniffer'] = sniffer
+
+
+@when('a client sends a DHCPDISCOVER with the Client FQDN option')
+def step_when_discover_with_fqdn(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    xid = int.from_bytes(os.urandom(4), 'big')
+    # Option 81 payload (RFC 4702 section 2): flags, RCODE1, RCODE2, domain name.
+    # flags=0x05 sets E (canonical DNS wire-format encoding) and S (client asks
+    # the server to perform the forward A RR update).  RCODE1/RCODE2 are 0 in
+    # client messages.  The domain name uses length-prefixed labels per the E bit.
+    fqdn = b'\x0atestclient\x07example\x03com\x00'
+    option81_payload = b'\x05\x00\x00' + fqdn
+    discover = (
+        Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(_client_mac()), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'discover'),
+            (81, option81_payload),
             ('param_req_list', [1, 3, 6, 51, 58, 59]),
             ('end'),
         ])
