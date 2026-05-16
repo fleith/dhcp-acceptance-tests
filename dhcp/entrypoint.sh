@@ -82,6 +82,15 @@ max-lease-time 120;
 option dhcp-renewal-time 60;
 option dhcp-rebinding-time 105;
 
+# RFC 4702: enable DDNS so dhcpd negotiates the Client FQDN option (81) and
+# echoes it back in the OFFER/ACK.  The .test TLD (RFC 6761) keeps any actual
+# DNS update attempt local and fast-failing; the acceptance test only exercises
+# the option echo, not the DNS update itself.
+ddns-update-style interim;
+ddns-updates on;
+ddns-domainname "dhcp-acceptance.test";
+ddns-rev-domainname "in-addr.arpa";
+
 shared-network dhcp-test-shared {
 subnet $NET netmask $NETMASK {
     # Always send broadcast responses so the test-runner's sniffer captures

@@ -76,7 +76,7 @@ Current suite covers key behaviors from:
 - **RFC 3011**: Subnet Selection Option (option 118) acceptance on ISC and Kea, plus alternate-subnet selection path on Kea in the multi-subnet Docker topology.
 - **RFC 3046**: relay-agent-information (Option 82) request acceptance path.
 - **RFC 3396**: concatenated option fragment acceptance path.
-- **RFC 4702**: Client FQDN option (Option 81) request acceptance path.
+- **RFC 4702**: Client FQDN option (Option 81) negotiation — server echoes the option in its DHCPACK.
 - **RFC 6842**: client-identifier based lease stability across different hardware addresses.
 - **RFC 8415**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, and stateless INFORMATION-REQUEST configuration paths.
 

@@ -55,6 +55,10 @@ ALT_NET3="$(echo "$ALT_NET" | cut -d. -f1-3)"
 ALT_ROUTER_IP="${ALT_NET3}.1"
 
 mkdir -p /etc/kea /data /run/kea /var/run/kea /var/lib/kea
+
+# RFC 4702: dhcp-ddns.enable-updates lets kea-dhcp4 negotiate and echo the
+# Client FQDN option (81).  kea-dhcp-ddns (D2) is intentionally not started --
+# only the option echo is under test, not the DNS update delivery.
 cat > /etc/kea/kea-dhcp4.conf << CONF
 {
   "Dhcp4": {
@@ -62,6 +66,11 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
     "interfaces-config": {
       "interfaces": [ "$IFACE" ]
     },
+    "dhcp-ddns": {
+      "enable-updates": true
+    },
+    "ddns-send-updates": true,
+    "ddns-qualifying-suffix": "dhcp-acceptance.test",
     "lease-database": {
       "type": "memfile",
       "name": "/data/kea-leases4.csv",
