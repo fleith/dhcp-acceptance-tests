@@ -3,6 +3,9 @@ services:
     build: ./dhcp
     container_name: dhcp-test-server
     command: ["eth0"]
+    environment:
+      RFC3011_ALT_SUBNET: 172.29.1.0/24
+      RFC3011_ALT_SERVER_IP: 172.29.1.2
     cap_add:
       - NET_ADMIN
     privileged: true
@@ -28,7 +31,9 @@ services:
         ipv4_address: 172.29.0.3
     environment:
       TEST_SERVER_IP: 172.29.0.2
+      TEST_SERVER_IMPL: isc-dhcpd
       TEST_INTERFACE: eth0
+      TEST_SUBNET_SELECTION_SUBNET: 172.29.1.0/24
     volumes:
       - .:/app
     working_dir: /app

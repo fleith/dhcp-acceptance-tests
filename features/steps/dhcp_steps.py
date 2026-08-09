@@ -1,4 +1,4 @@
-﻿import subprocess
+import subprocess
 import time
 import ipaddress
 import os
@@ -14,15 +14,15 @@ Step definitions for the DHCP acceptance tests.
 
 Environment variables:
 
-* ``TEST_SERVER_IP`` Ã¢â‚¬â€œ IP address of the DHCP server.  Defaults to
+* ``TEST_SERVER_IP`` – IP address of the DHCP server.  Defaults to
   ``192.168.56.1``.
-* ``TEST_CLIENT_MAC`` Ã¢â‚¬â€œ MAC address to use for the test client.  Defaults
+* ``TEST_CLIENT_MAC`` – MAC address to use for the test client.  Defaults
   to a locally administered address ``02:00:00:00:00:01``.
-* ``TEST_INTERFACE`` Ã¢â‚¬â€œ Network interface on which to send and receive
+* ``TEST_INTERFACE`` – Network interface on which to send and receive
   DHCP packets.  Defaults to ``eth0``.
-* ``TEST_SUBNET`` Ã¢â‚¬â€œ CIDR notation for the subnet from which IPs will be
+* ``TEST_SUBNET`` – CIDR notation for the subnet from which IPs will be
   leased.  Defaults to ``192.168.56.0/24``.
-* ``TEST_LEASE_TIME`` Ã¢â‚¬â€œ Lease time in seconds used by the DHCP server.
+* ``TEST_LEASE_TIME`` – Lease time in seconds used by the DHCP server.
 """
 
 DHCP_SERVER_IP = os.getenv("TEST_SERVER_IP", "192.168.56.1")
@@ -120,8 +120,22 @@ def _subnet_prefixlen():
     return ipaddress.ip_network(SUBNET, strict=False).prefixlen
 
 
-def _subnet_network_bytes():
-    return ipaddress.ip_network(SUBNET, strict=False).network_address.packed
+def _subnet_network_bytes(subnet_cidr=SUBNET):
+    return ipaddress.ip_network(subnet_cidr, strict=False).network_address.packed
+
+
+def _subnet_selection_subnet():
+    selected = os.getenv("TEST_SUBNET_SELECTION_SUBNET")
+    if selected:
+        return selected
+
+    base_net = ipaddress.ip_network(SUBNET, strict=False)
+    if base_net.prefixlen != 24:
+        raise RuntimeError(
+            "Set TEST_SUBNET_SELECTION_SUBNET when running RFC 3011 tests on a non-/24 subnet."
+        )
+    return str(ipaddress.ip_network((int(base_net.network_address) + base_net.num_addresses,
+                                     base_net.prefixlen)))
 
 
 def _interface_has_ipv4(ipv4_addr):
@@ -203,7 +217,7 @@ def step_when_send_discover(context):
         DHCP(options=[
             ('message-type', 'discover'),
             # Request subnet-mask, router, DNS, lease-time, T1, T2 so dhcpd
-            # includes renewal/rebinding timers in its DHCPACK (RFC 2132 Ã‚Â§9.11).
+            # includes renewal/rebinding timers in its DHCPACK (RFC 2132 §9.11).
             ('param_req_list', [1, 3, 6, 51, 58, 59]),
             ('end'),
         ])
@@ -246,7 +260,7 @@ def step_then_receive_ack(context):
             ('message-type', 'request'),
             ('server_id', DHCP_SERVER_IP),
             ('requested_addr', offered_ip),
-            # Include PRL so dhcpd returns T1/T2 in the ACK (RFC 2132 Ã‚Â§9.11)
+            # Include PRL so dhcpd returns T1/T2 in the ACK (RFC 2132 §9.11)
             ('param_req_list', [1, 3, 6, 51, 58, 59]),
             ('end'),
         ])
@@ -398,7 +412,7 @@ def step_then_reclaim_ip(context):
 
 
 # ---------------------------------------------------------------------------
-# DHCPNAK and DHCPDECLINE (RFC 2131 Ã‚Â§3.1.4, Ã‚Â§3.1.5)
+# DHCPNAK and DHCPDECLINE (RFC 2131 §3.1.4, §3.1.5)
 # ---------------------------------------------------------------------------
 
 @when('the client sends a DHCPREQUEST for an address outside the server\'s subnet')
@@ -408,7 +422,7 @@ def step_when_request_wrong_addr(context):
     xid = context_storage.get('transaction_id')
     # Use 203.0.113.50 (TEST-NET-3, RFC 5737): guaranteed to be outside the
     # server's subnet.  ISC dhcpd with authoritative; NAKs requests for IPs
-    # on a different network (RFC 2131 Ã‚Â§4.3.2).  In-subnet but out-of-pool
+    # on a different network (RFC 2131 §4.3.2).  In-subnet but out-of-pool
     # addresses do NOT trigger a NAK in ISC dhcpd 4.4.x.
     wrong_ip = '203.0.113.50'
     request = (
@@ -477,7 +491,7 @@ def step_then_new_offer_after_decline(context):
 
 
 # ---------------------------------------------------------------------------
-# INIT-REBOOT state (RFC 2131 Ã‚Â§3.2)
+# INIT-REBOOT state (RFC 2131 §3.2)
 # ---------------------------------------------------------------------------
 
 @when('the client reboots and sends a DHCPREQUEST for its previous address')
@@ -486,7 +500,7 @@ def step_when_reboot_request(context):
         raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
     offered_ip = context_storage.get('offered_ip')
     new_xid = int.from_bytes(os.urandom(4), 'big')
-    # INIT-REBOOT: no server_id option, requested_addr = previous IP (RFC 2131 Ã‚Â§3.2)
+    # INIT-REBOOT: no server_id option, requested_addr = previous IP (RFC 2131 §3.2)
     request = (
         Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
         IP(src="0.0.0.0", dst="255.255.255.255") /
@@ -537,7 +551,7 @@ def step_when_reboot_wrong_subnet(context):
 
 
 # ---------------------------------------------------------------------------
-# DHCPINFORM (RFC 2131 Ã‚Â§3.5)
+# DHCPINFORM (RFC 2131 §3.5)
 # ---------------------------------------------------------------------------
 
 @when('the client sends a DHCPINFORM to request configuration options')
@@ -557,7 +571,7 @@ def step_when_send_inform(context):
     context_storage['inform_ip_added'] = _ensure_interface_ipv4(inform_ip)
 
     new_xid = int.from_bytes(os.urandom(4), 'big')
-    # ciaddr set to inform_ip; no yiaddr requested (RFC 2131 Ã‚Â§3.5).
+    # ciaddr set to inform_ip; no yiaddr requested (RFC 2131 §3.5).
     # Request common network options explicitly so ACK payload checks are stable.
     inform = (
         IP(src=inform_ip, dst=DHCP_SERVER_IP) /
@@ -624,7 +638,7 @@ def step_then_inform_no_yiaddr(context):
 
 
 # ---------------------------------------------------------------------------
-# Lease options and timer validation (RFC 2131 Ã‚Â§4.3.1, Ã‚Â§4.4.5)
+# Lease options and timer validation (RFC 2131 §4.3.1, §4.4.5)
 # ---------------------------------------------------------------------------
 
 @then('the DHCPACK includes a subnet mask option')
@@ -652,7 +666,7 @@ def step_then_t1_half(context):
     expected = lease_time * 0.5
     tolerance = max(2, expected * 0.05)
     assert abs(t1 - expected) <= tolerance, \
-        f"T1={t1}s is not ~50% of lease_time={lease_time}s (expected {expected}Ã‚Â±{tolerance})"
+        f"T1={t1}s is not ~50% of lease_time={lease_time}s (expected {expected}±{tolerance})"
 
 
 @then('the DHCPACK T2 timer is approximately 87.5% of the lease time')
@@ -665,11 +679,11 @@ def step_then_t2_875(context):
     expected = lease_time * 0.875
     tolerance = max(2, expected * 0.05)
     assert abs(t2 - expected) <= tolerance, \
-        f"T2={t2}s is not ~87.5% of lease_time={lease_time}s (expected {expected}Ã‚Â±{tolerance})"
+        f"T2={t2}s is not ~87.5% of lease_time={lease_time}s (expected {expected}±{tolerance})"
 
 
 # ---------------------------------------------------------------------------
-# Address pool behaviour (RFC 2131 Ã‚Â§4.1)
+# Address pool behaviour (RFC 2131 §4.1)
 # ---------------------------------------------------------------------------
 
 @then('the client receives a DHCPOFFER with a reusable IP address from the pool')
@@ -725,6 +739,103 @@ def step_when_discover_with_subnet_selection(context):
     sendp(discover, iface=INTERFACE, verbose=False)
     context_storage['transaction_id'] = xid
     context_storage['discover_sniffer'] = sniffer
+
+
+@when('a client sends a DHCPDISCOVER with Subnet Selection option for the alternate served subnet')
+def step_when_discover_with_alt_subnet_selection(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    selected_subnet = _subnet_selection_subnet()
+    xid = int.from_bytes(os.urandom(4), 'big')
+    discover = (
+        Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(_client_mac()), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'discover'),
+            (118, _subnet_network_bytes(selected_subnet)),
+            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('end'),
+        ])
+    )
+    sniffer = _start_dhcp_sniffer()
+    sendp(discover, iface=INTERFACE, verbose=False)
+    context_storage['transaction_id'] = xid
+    context_storage['discover_sniffer'] = sniffer
+    context_storage['rfc3011_selected_subnet'] = selected_subnet
+
+
+@then('the client receives a DHCPOFFER with an IP address in the selected subnet')
+def step_then_receive_offer_in_selected_subnet(context):
+    xid = context_storage.get('transaction_id')
+    sniffer = context_storage.get('discover_sniffer')
+    selected_subnet = context_storage.get('rfc3011_selected_subnet')
+    assert selected_subnet, "Missing RFC 3011 selected subnet state"
+
+    offer_pkts = _dhcp_packets(sniffer, msg_type=2, xid=xid)
+    assert offer_pkts, "No DHCPOFFER received for RFC 3011 subnet-selection test"
+
+    selected_network = ipaddress.ip_network(selected_subnet, strict=False)
+    matching_offers = [
+        p for p in offer_pkts
+        if ipaddress.ip_address(p[BOOTP].yiaddr) in selected_network
+    ]
+    assert matching_offers, (
+        f"No DHCPOFFER in selected subnet {selected_subnet}; "
+        f"got {[p[BOOTP].yiaddr for p in offer_pkts]}"
+    )
+
+    offer = matching_offers[0]
+    context_storage['offered_ip'] = offer[BOOTP].yiaddr
+    context_storage['rfc3011_offer_server_id'] = _get_dhcp_option(offer, 'server_id')
+
+
+@then('a DHCPACK finalizes the lease for the selected subnet')
+def step_then_receive_ack_for_selected_subnet(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    xid = context_storage.get('transaction_id')
+    offered_ip = context_storage.get('offered_ip')
+    selected_subnet = context_storage.get('rfc3011_selected_subnet')
+    server_id = context_storage.get('rfc3011_offer_server_id')
+
+    assert offered_ip, "Missing offered IP for RFC 3011 subnet-selection test"
+    assert selected_subnet, "Missing selected subnet for RFC 3011 subnet-selection test"
+
+    request_options = [('message-type', 'request')]
+    if server_id is not None:
+        request_options.append(('server_id', server_id))
+    request_options.extend([
+        ('requested_addr', offered_ip),
+        (118, _subnet_network_bytes(selected_subnet)),
+        ('param_req_list', [1, 3, 6, 51, 58, 59]),
+        ('end'),
+    ])
+
+    request = (
+        Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(_client_mac()), xid=xid, flags=0x8000) /
+        DHCP(options=request_options)
+    )
+    sniffer = _start_dhcp_sniffer()
+    sendp(request, iface=INTERFACE, verbose=False)
+
+    ack_pkts = _dhcp_packets(sniffer, msg_type=5, xid=xid)
+    selected_network = ipaddress.ip_network(selected_subnet, strict=False)
+    matching_acks = [
+        p for p in ack_pkts
+        if p[BOOTP].yiaddr == offered_ip
+        and ipaddress.ip_address(p[BOOTP].yiaddr) in selected_network
+    ]
+    assert matching_acks, (
+        f"No DHCPACK finalizing selected subnet {selected_subnet}; "
+        f"got {[p[BOOTP].yiaddr for p in ack_pkts]}"
+    )
+
+    context_storage['ack_packet'] = matching_acks[0]
 
 
 @when('a client sends a DHCPDISCOVER with Relay Agent Information option')

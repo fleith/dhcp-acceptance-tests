@@ -28,12 +28,24 @@ def _steps_modules():
     return modules
 
 
+def _server_impl():
+    return os.getenv('TEST_SERVER_IMPL', 'isc-dhcpd').strip().lower()
+
+
 def before_scenario(context, scenario):
     """Reset shared state and assign a fresh client MAC before each scenario.
 
     Using a unique MAC per scenario prevents server-side lease reuse from
     affecting lease-time assertions.
     """
+    server_impl = _server_impl()
+    if 'kea' in scenario.tags and server_impl != 'kea':
+        scenario.skip(f"Scenario requires Kea backend; current backend is {server_impl}.")
+        return
+    if 'isc' in scenario.tags and server_impl not in ('isc', 'isc-dhcpd'):
+        scenario.skip(f"Scenario requires ISC DHCP backend; current backend is {server_impl}.")
+        return
+
     for steps in _steps_modules():
         if hasattr(steps, 'context_storage'):
             steps.context_storage.clear()

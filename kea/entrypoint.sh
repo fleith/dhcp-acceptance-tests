@@ -11,6 +11,7 @@ fi
 
 IP="${IP_PREFIX%%/*}"
 PREFIX="${IP_PREFIX##*/}"
+ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
 
 prefix_to_netmask() {
     _p=$1
@@ -43,6 +44,16 @@ EOF
 NET="$(( i1 & m1 )).$(( i2 & m2 )).$(( i3 & m3 )).$(( i4 & m4 ))"
 NET3="$(echo "$NET" | cut -d. -f1-3)"
 
+IFS=. read -r n1 n2 n3 n4 << EOF
+$NET
+EOF
+if [ -z "$ALT_SUBNET_CIDR" ]; then
+    ALT_SUBNET_CIDR="${n1}.${n2}.$(( n3 + 1 )).0/$PREFIX"
+fi
+ALT_NET="${ALT_SUBNET_CIDR%%/*}"
+ALT_NET3="$(echo "$ALT_NET" | cut -d. -f1-3)"
+ALT_ROUTER_IP="${ALT_NET3}.1"
+
 mkdir -p /etc/kea /data /run/kea /var/run/kea /var/lib/kea
 cat > /etc/kea/kea-dhcp4.conf << CONF
 {
@@ -68,6 +79,15 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
           { "name": "subnet-mask", "data": "$NETMASK" },
           { "name": "domain-name-servers", "data": "8.8.8.8" }
         ]
+      },
+      {
+        "subnet": "$ALT_SUBNET_CIDR",
+        "pools": [ { "pool": "${ALT_NET3}.100 - ${ALT_NET3}.200" } ],
+        "option-data": [
+          { "name": "routers", "data": "${ALT_ROUTER_IP}" },
+          { "name": "subnet-mask", "data": "$NETMASK" },
+          { "name": "domain-name-servers", "data": "8.8.8.8" }
+        ]
       }
     ],
     "loggers": [
@@ -81,7 +101,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
 }
 CONF
 
-echo "[kea] interface=$IFACE ip=$IP netmask=$NETMASK network=$NET"
+echo "[kea] interface=$IFACE ip=$IP netmask=$NETMASK network=$NET alt_subnet=$ALT_SUBNET_CIDR"
 echo "[kea] Generated /etc/kea/kea-dhcp4.conf:"
 cat /etc/kea/kea-dhcp4.conf
 

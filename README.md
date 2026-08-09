@@ -38,6 +38,8 @@ The script composes the correct Docker files and always tears down the stack aft
 
 Note: `--server kea --ip-version v6` is currently unsupported in this topology due a Kea DHCPv6 socket bind limitation on Docker bridge networking.
 
+Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet.
+
 ### Direct Docker Compose runs (advanced)
 
 ```bash
@@ -56,9 +58,11 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_IP_VERSION` | `v4` | Test mode: `v4`, `v6`, or `dual` |
 | `TEST_SERVER_IP` | `172.29.0.2` | DHCPv4 server IP |
 | `TEST_SERVER_IPV6` | `fd00:29::2` | DHCPv6 server IP |
+| `TEST_SERVER_IMPL` | `isc-dhcpd` | Backend selector for server-specific scenarios |
 | `TEST_INTERFACE` | `eth0` | Interface used for raw packets |
 | `TEST_SUBNET` | detected from interface | Expected DHCPv4 lease subnet |
 | `TEST_SUBNET_V6` | detected from interface | Expected DHCPv6 lease subnet |
+| `TEST_SUBNET_SELECTION_SUBNET` | `172.29.1.0/24` | Alternate DHCPv4 subnet used by RFC 3011 selection tests |
 | `TEST_LEASE_TIME` | `120` | Lease duration in seconds |
 | `TEST_CLIENT_MAC` | `02:00:00:00:00:01` | Fallback DHCPv4 client MAC |
 
@@ -68,7 +72,7 @@ Current suite covers key behaviors from:
 
 - **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM, NAK/DECLINE handling.
 - **RFC 2132**: required network options and T1/T2 lease timer validation.
-- **RFC 3011**: Subnet Selection Option (option 118) request acceptance path.
+- **RFC 3011**: Subnet Selection Option (option 118) acceptance on ISC and Kea, plus alternate-subnet selection path on Kea in the multi-subnet Docker topology.
 - **RFC 3046**: relay-agent-information (Option 82) request acceptance path.
 - **RFC 3396**: concatenated option fragment acceptance path.
 - **RFC 6842**: client-identifier based lease stability across different hardware addresses.

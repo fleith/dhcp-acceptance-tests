@@ -10,3 +10,7 @@ services:
       timeout: 2s
       retries: 20
       start_period: 2s
+
+  test-runner:
+    environment:
+      TEST_SERVER_IMPL: kea
