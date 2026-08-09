@@ -77,11 +77,6 @@ run_once() {
   local rc=0
   local up_args=(--abort-on-container-exit --exit-code-from test-runner)
 
-  if [[ "$SERVER" == "kea" && "$mode" == "v6" ]]; then
-    echo "[ERROR] --server kea with --ip-version v6 is currently unsupported in this topology (Kea DHCPv6 socket bind issue in Docker bridge mode)."
-    return 2
-  fi
-
   build_compose_files "$mode"
 
   if [[ "$SERVER" == "kea" ]]; then

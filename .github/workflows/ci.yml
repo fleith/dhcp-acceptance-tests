@@ -19,6 +19,8 @@ jobs:
             ip_version: v6
           - server: kea
             ip_version: v4
+          - server: kea
+            ip_version: v6
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

@@ -30,13 +30,14 @@ bash ./run_dhcp_tests.sh --server kea
 # ISC DHCPv6
 bash ./run_dhcp_tests.sh --ip-version v6
 
+# Kea DHCPv6
+bash ./run_dhcp_tests.sh --server kea --ip-version v6
+
 # Run both v4 and v6 for one server
 bash ./run_dhcp_tests.sh --server isc-dhcpd --ip-version dual
 ```
 
 The script composes the correct Docker files and always tears down the stack after each run.
-
-Note: `--server kea --ip-version v6` is currently unsupported in this topology due a Kea DHCPv6 socket bind limitation on Docker bridge networking.
 
 Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet.
 
@@ -121,6 +122,4 @@ dhcp-acceptance-tests/
 GitHub Actions runs the supported matrix:
 
 - `isc-dhcpd` with `v4` and `v6`
-- `kea` with `v4`
-
-Kea DHCPv6 is currently excluded due a Docker bridge link-local socket limitation.
+- `kea` with `v4` and `v6`

@@ -101,6 +101,19 @@ def _get_iaaddr(pkt):
     return getattr(opt, "addr", None) if opt else None
 
 
+def _ia_na(address=None, preferred_lifetime=0, valid_lifetime=0):
+    options = []
+    if address:
+        options.append(
+            _cls("DHCP6OptIAAddress")(
+                addr=address,
+                preflft=preferred_lifetime,
+                validlft=valid_lifetime,
+            )
+        )
+    return _cls("DHCP6OptIA_NA")(iaid=_iaid(), ianaopts=options)
+
+
 def _ensure_interface_ipv6(ipv6_addr):
     prefix = ipaddress.ip_network(SUBNET_V6, strict=False).prefixlen
     current = subprocess.check_output(["ip", "-6", "addr", "show", "dev", INTERFACE]).decode()
@@ -155,7 +168,7 @@ def step_when_send_solicit(context):
         / _cls("DHCP6_Solicit")(trid=trid)
         / _cls("DHCP6OptClientId")(duid=_client_duid())
         / _cls("DHCP6OptElapsedTime")(elapsedtime=0)
-        / _cls("DHCP6OptIA_NA")(iaid=_iaid())
+        / _ia_na()
     )
 
     sniffer = _start_v6_sniffer(timeout=12)
@@ -184,12 +197,15 @@ def step_then_receive_advertise(context):
     server_duid = _get_server_duid(adv)
     assert server_duid, "DHCPv6 ADVERTISE missing Server Identifier"
 
-    offered_ip = _get_iaaddr(adv)
+    offered_iaaddr = adv.getlayer(_cls("DHCP6OptIAAddress"))
+    offered_ip = getattr(offered_iaaddr, "addr", None) if offered_iaaddr else None
     if offered_ip:
         assert ipaddress.ip_address(offered_ip) in ipaddress.ip_network(SUBNET_V6), (
             f"Offered IPv6 {offered_ip} not in subnet {SUBNET_V6}"
         )
         context_storage_v6["offered_ipv6"] = offered_ip
+        context_storage_v6["offered_preferred_lifetime"] = offered_iaaddr.preflft
+        context_storage_v6["offered_valid_lifetime"] = offered_iaaddr.validlft
 
     context_storage_v6["server_duid"] = server_duid
 
@@ -207,7 +223,11 @@ def step_when_send_request(context):
         / _cls("DHCP6OptClientId")(duid=_client_duid())
         / _cls("DHCP6OptServerId")(duid=context_storage_v6["server_duid"])
         / _cls("DHCP6OptElapsedTime")(elapsedtime=0)
-        / _cls("DHCP6OptIA_NA")(iaid=_iaid())
+        / _ia_na(
+            context_storage_v6.get("offered_ipv6"),
+            context_storage_v6.get("offered_preferred_lifetime", 0),
+            context_storage_v6.get("offered_valid_lifetime", 0),
+        )
     )
 
     sniffer = _start_v6_sniffer(timeout=12)
@@ -225,7 +245,11 @@ def step_then_reply_finalizes_lease(context):
     assert replies, "No DHCPv6 REPLY received"
 
     reply = replies[0]
-    leased_ip = _get_iaaddr(reply)
+    leased_iaaddr = reply.getlayer(_cls("DHCP6OptIAAddress"))
+    leased_ip = getattr(leased_iaaddr, "addr", None) if leased_iaaddr else None
+    if not leased_ip:
+        print("\n[DEBUG DHCPv6] REPLY did not contain an IA Address")
+        print(reply.show(dump=True))
     assert leased_ip, "DHCPv6 REPLY missing IA Address"
     assert ipaddress.ip_address(leased_ip) in ipaddress.ip_network(SUBNET_V6), (
         f"Leased IPv6 {leased_ip} not in subnet {SUBNET_V6}"
@@ -235,6 +259,8 @@ def step_then_reply_finalizes_lease(context):
     if server_duid:
         context_storage_v6["server_duid"] = server_duid
     context_storage_v6["leased_ipv6"] = leased_ip
+    context_storage_v6["leased_preferred_lifetime"] = leased_iaaddr.preflft
+    context_storage_v6["leased_valid_lifetime"] = leased_iaaddr.validlft
 
 
 @when("the client sends a DHCPv6 RENEW message")
@@ -253,7 +279,11 @@ def step_when_send_renew(context):
         / _cls("DHCP6OptClientId")(duid=_client_duid())
         / _cls("DHCP6OptServerId")(duid=context_storage_v6["server_duid"])
         / _cls("DHCP6OptElapsedTime")(elapsedtime=0)
-        / _cls("DHCP6OptIA_NA")(iaid=_iaid())
+        / _ia_na(
+            lease_ip,
+            context_storage_v6.get("leased_preferred_lifetime", 0),
+            context_storage_v6.get("leased_valid_lifetime", 0),
+        )
     )
 
     sniffer = _start_v6_sniffer(timeout=12)
