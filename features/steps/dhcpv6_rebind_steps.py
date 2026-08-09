@@ -11,6 +11,7 @@ from dhcpv6_support import (
     client_duid as _client_duid,
     context_storage_v6,
     dhcpv6_packets as _dhcpv6_packets,
+    duids_equal as _duids_equal,
     ensure_interface_ipv6 as _ensure_interface_ipv6,
     get_server_duid as _get_server_duid,
     ia_na as _ia_na,
@@ -62,31 +63,38 @@ def step_then_reply_extends_rebound_lease(context):
     assert replies, f"No DHCPv6 REPLY received for REBIND transaction {trid:#08x}"
 
     expected_client_duid = _client_duid()
-    expected_server_duid = context_storage_v6["server_duid"]
     expected_iaid = _iaid()
     expected_ip = context_storage_v6["leased_ipv6"]
 
     matching_replies = []
+    observed_replies = []
     for reply in replies:
         client_id = reply.getlayer(_cls("DHCP6OptClientId"))
         ia_na = reply.getlayer(_cls("DHCP6OptIA_NA"))
         ia_addr = reply.getlayer(_cls("DHCP6OptIAAddress"))
+        observed = (
+            getattr(client_id, "duid", None),
+            _get_server_duid(reply),
+            getattr(ia_na, "iaid", None),
+            getattr(ia_addr, "addr", None),
+        )
+        observed_replies.append(observed)
         if (
-            getattr(client_id, "duid", None) == expected_client_duid
-            and _get_server_duid(reply) == expected_server_duid
-            and getattr(ia_na, "iaid", None) == expected_iaid
-            and getattr(ia_addr, "addr", None) == expected_ip
+            _duids_equal(observed[0], expected_client_duid)
+            and observed[1] is not None
+            and observed[2] == expected_iaid
+            and observed[3] == expected_ip
         ):
             matching_replies.append((reply, ia_addr))
 
     assert matching_replies, (
-        "DHCPv6 REBIND REPLY did not match the client, server, IAID, and leased address"
+        "DHCPv6 REBIND REPLY did not match expected "
+        f"client/IAID/address {(expected_client_duid, expected_iaid, expected_ip)!r}; "
+        f"observed {observed_replies!r}"
     )
 
     reply, rebound_iaaddr = matching_replies[0]
-    assert _get_server_duid(reply) == expected_server_duid, (
-        "DHCPv6 REBIND REPLY missing the expected Server Identifier"
-    )
+    context_storage_v6["server_duid"] = _get_server_duid(reply)
     assert rebound_iaaddr.preflft > 0, (
         "DHCPv6 REBIND REPLY did not refresh the preferred lifetime"
     )

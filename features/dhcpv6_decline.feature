@@ -6,5 +6,5 @@ Feature: DHCPv6 declined address handling (RFC 8415)
     Given a client holds a DHCPv6 lease from the server
     When the client sends a DHCPv6 DECLINE for its active lease
     Then the server replies that the DHCPv6 DECLINE succeeded
-    When a different client sends a DHCPv6 SOLICIT message
-    Then the different client is advertised an address other than the declined address
+    When the client sends another DHCPv6 SOLICIT after declining the lease
+    Then the client is advertised an address other than the declined address

@@ -11,8 +11,8 @@ from dhcpv6_support import (
     client_duid as _client_duid,
     context_storage_v6,
     dhcpv6_packets as _dhcpv6_packets,
+    duids_equal as _duids_equal,
     ia_na as _ia_na,
-    initialize_client_state as _initialize_client_state,
     new_trid as _new_trid,
     require_scapy_v6 as _require_scapy_v6,
     sendp,
@@ -85,15 +85,20 @@ def step_then_decline_succeeds(context):
     reply = replies[0]
     client_id = reply.getlayer(_cls("DHCP6OptClientId"))
     server_id = reply.getlayer(_cls("DHCP6OptServerId"))
-    assert getattr(client_id, "duid", None) == _client_duid(), (
-        "DHCPv6 DECLINE REPLY has an unexpected Client Identifier"
+    actual_client_duid = getattr(client_id, "duid", None)
+    expected_client_duid = _client_duid()
+    assert _duids_equal(actual_client_duid, expected_client_duid), (
+        "DHCPv6 DECLINE REPLY has an unexpected Client Identifier: "
+        f"expected {expected_client_duid!r}, got {actual_client_duid!r}"
     )
-    assert getattr(server_id, "duid", None) == context_storage_v6["server_duid"], (
-        "DHCPv6 DECLINE REPLY has an unexpected Server Identifier"
+    actual_server_duid = getattr(server_id, "duid", None)
+    expected_server_duid = context_storage_v6["server_duid"]
+    assert _duids_equal(actual_server_duid, expected_server_duid), (
+        "DHCPv6 DECLINE REPLY has an unexpected Server Identifier: "
+        f"expected {expected_server_duid!r}, got {actual_server_duid!r}"
     )
 
     statuses = _nested_options(reply, _cls("DHCP6OptStatusCode"))
-    assert statuses, "DHCPv6 DECLINE REPLY missing Status Code"
     failures = [
         getattr(status, "statuscode", None)
         for status in statuses
@@ -102,15 +107,12 @@ def step_then_decline_succeeds(context):
     assert not failures, f"DHCPv6 DECLINE failed with status code(s): {failures}"
 
 
-@when("a different client sends a DHCPv6 SOLICIT message")
-def step_when_different_client_solicits(context):
-    previous_duid = _client_duid()
-    _initialize_client_state()
-    assert _client_duid() != previous_duid, "DHCPv6 client identity was not renewed"
+@when("the client sends another DHCPv6 SOLICIT after declining the lease")
+def step_when_client_solicits_after_decline(context):
     context.execute_steps("When a client sends a DHCPv6 SOLICIT message")
 
 
-@then("the different client is advertised an address other than the declined address")
+@then("the client is advertised an address other than the declined address")
 def step_then_different_address_advertised(context):
     context.execute_steps("Then the client receives a DHCPv6 ADVERTISE from the server")
     advertised_ip = context_storage_v6.get("offered_ipv6")

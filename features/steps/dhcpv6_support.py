@@ -74,6 +74,13 @@ def client_duid():
     return context_storage_v6["client_duid"]
 
 
+def duids_equal(first, second):
+    """Compare raw and Scapy-decoded DUID values by their wire representation."""
+    if first is None or second is None:
+        return first is second
+    return bytes(first) == bytes(second)
+
+
 def iaid():
     return context_storage_v6["iaid"]
 

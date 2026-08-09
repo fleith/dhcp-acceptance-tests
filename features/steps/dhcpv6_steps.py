@@ -49,6 +49,13 @@ def step_given_client_holds_dhcpv6_lease(context):
 def step_when_send_solicit(context):
     _require_scapy_v6()
     trid = _new_trid()
+    for key in (
+        "offered_ipv6",
+        "offered_preferred_lifetime",
+        "offered_valid_lifetime",
+        "server_duid",
+    ):
+        context_storage_v6.pop(key, None)
 
     solicit = (
         Ether(src=context_storage_v6["client_mac"], dst="33:33:00:01:00:02")
@@ -57,7 +64,7 @@ def step_when_send_solicit(context):
         / _cls("DHCP6_Solicit")(trid=trid)
         / _cls("DHCP6OptClientId")(duid=_client_duid())
         / _cls("DHCP6OptElapsedTime")(elapsedtime=0)
-        / _ia_na()
+        / _ia_na(context_storage_v6.pop("solicit_ipv6_hint", None))
     )
 
     sniffer = _start_v6_sniffer(timeout=12)
@@ -88,13 +95,13 @@ def step_then_receive_advertise(context):
 
     offered_iaaddr = adv.getlayer(_cls("DHCP6OptIAAddress"))
     offered_ip = getattr(offered_iaaddr, "addr", None) if offered_iaaddr else None
-    if offered_ip:
-        assert ipaddress.ip_address(offered_ip) in ipaddress.ip_network(SUBNET_V6), (
-            f"Offered IPv6 {offered_ip} not in subnet {SUBNET_V6}"
-        )
-        context_storage_v6["offered_ipv6"] = offered_ip
-        context_storage_v6["offered_preferred_lifetime"] = offered_iaaddr.preflft
-        context_storage_v6["offered_valid_lifetime"] = offered_iaaddr.validlft
+    assert offered_ip, "DHCPv6 ADVERTISE missing IA Address"
+    assert ipaddress.ip_address(offered_ip) in ipaddress.ip_network(SUBNET_V6), (
+        f"Offered IPv6 {offered_ip} not in subnet {SUBNET_V6}"
+    )
+    context_storage_v6["offered_ipv6"] = offered_ip
+    context_storage_v6["offered_preferred_lifetime"] = offered_iaaddr.preflft
+    context_storage_v6["offered_valid_lifetime"] = offered_iaaddr.validlft
 
     context_storage_v6["server_duid"] = server_duid
 

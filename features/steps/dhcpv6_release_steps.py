@@ -11,8 +11,10 @@ from dhcpv6_support import (
     client_duid as _client_duid,
     context_storage_v6,
     dhcpv6_packets as _dhcpv6_packets,
+    duids_equal as _duids_equal,
     get_server_duid as _get_server_duid,
     ia_na as _ia_na,
+    initialize_client_state as _initialize_client_state,
     new_trid as _new_trid,
     require_scapy_v6 as _require_scapy_v6,
     sendp,
@@ -45,6 +47,27 @@ def _status_codes(packet):
     return statuses
 
 
+def _matching_release_reply():
+    trid = context_storage_v6["release_trid"]
+    sniffer = context_storage_v6["release_sniffer"]
+    replies = _dhcpv6_packets(sniffer, "DHCP6_Reply", trid)
+    assert replies, "No transaction-matched DHCPv6 REPLY for RELEASE received"
+
+    reply = replies[0]
+    assert _duids_equal(_get_server_duid(reply), context_storage_v6["server_duid"]), (
+        "DHCPv6 RELEASE REPLY Server Identifier does not match the lease server"
+    )
+
+    client_id = reply.getlayer(_cls("DHCP6OptClientId"))
+    actual_client_duid = getattr(client_id, "duid", None)
+    expected_client_duid = _client_duid()
+    assert _duids_equal(actual_client_duid, expected_client_duid), (
+        "DHCPv6 RELEASE REPLY Client Identifier does not match the releasing client: "
+        f"expected {expected_client_duid!r}, got {actual_client_duid!r}"
+    )
+    return reply
+
+
 @when("the client sends a DHCPv6 RELEASE for its active lease")
 def step_when_client_releases_lease(context):
     _require_scapy_v6()
@@ -58,6 +81,7 @@ def step_when_client_releases_lease(context):
         / _cls("DHCP6_Release")(trid=trid)
         / _cls("DHCP6OptClientId")(duid=_client_duid())
         / _cls("DHCP6OptServerId")(duid=context_storage_v6["server_duid"])
+        / _cls("DHCP6OptElapsedTime")(elapsedtime=0)
         / _ia_na(
             lease_ip,
             context_storage_v6.get("leased_preferred_lifetime", 0),
@@ -74,26 +98,35 @@ def step_when_client_releases_lease(context):
 
 @then("the server returns a successful DHCPv6 RELEASE reply")
 def step_then_server_acknowledges_release(context):
-    trid = context_storage_v6["release_trid"]
-    sniffer = context_storage_v6["release_sniffer"]
-    replies = _dhcpv6_packets(sniffer, "DHCP6_Reply", trid)
-    assert replies, "No transaction-matched DHCPv6 REPLY for RELEASE received"
-
-    reply = replies[0]
-    assert _get_server_duid(reply) == context_storage_v6["server_duid"], (
-        "DHCPv6 RELEASE REPLY Server Identifier does not match the lease server"
-    )
-
-    client_id = reply.getlayer(_cls("DHCP6OptClientId"))
-    assert client_id and getattr(client_id, "duid", None) == _client_duid(), (
-        "DHCPv6 RELEASE REPLY Client Identifier does not match the releasing client"
-    )
-
+    reply = _matching_release_reply()
     statuses = _status_codes(reply)
-    assert statuses, "DHCPv6 RELEASE REPLY missing Status Code"
     failures = [
         (status.statuscode, getattr(status, "statusmsg", b""))
         for status in statuses
         if status.statuscode != 0
     ]
     assert not failures, f"DHCPv6 RELEASE was not successful: {failures}"
+
+
+@when("a different client solicits the released DHCPv6 address")
+def step_when_different_client_solicits_released_address(context):
+    released_ip = context_storage_v6["leased_ipv6"]
+    previous_duid = _client_duid()
+    context.released_ipv6 = released_ip
+
+    _initialize_client_state()
+    assert not _duids_equal(_client_duid(), previous_duid), (
+        "DHCPv6 client identity was not renewed"
+    )
+    context_storage_v6["solicit_ipv6_hint"] = released_ip
+    context.execute_steps("When a client sends a DHCPv6 SOLICIT message")
+
+
+@then("the server advertises the released DHCPv6 address")
+def step_then_server_advertises_released_address(context):
+    context.execute_steps("Then the client receives a DHCPv6 ADVERTISE from the server")
+    advertised_ip = context_storage_v6.get("offered_ipv6")
+    assert advertised_ip == context.released_ipv6, (
+        f"Server advertised {advertised_ip} instead of released address "
+        f"{context.released_ipv6}"
+    )

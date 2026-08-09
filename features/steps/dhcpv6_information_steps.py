@@ -11,6 +11,8 @@ from dhcpv6_support import (
     client_duid as _client_duid,
     context_storage_v6,
     dhcpv6_packets as _dhcpv6_packets,
+    duids_equal as _duids_equal,
+    get_server_duid as _get_server_duid,
     new_trid as _new_trid,
     require_scapy_v6 as _require_scapy_v6,
     sendp,
@@ -35,7 +37,8 @@ def step_when_send_information_request(context):
         / UDP(sport=546, dport=547)
         / _cls("DHCP6_InfoRequest")(trid=trid)
         / _cls("DHCP6OptClientId")(duid=_client_duid())
-        / _cls("DHCP6OptOptReq")(reqopts=[23, 24])
+        / _cls("DHCP6OptElapsedTime")(elapsedtime=0)
+        / _cls("DHCP6OptOptReq")(reqopts=[23, 24, 32, 83])
     )
 
     sniffer = _start_v6_sniffer(timeout=12)
@@ -53,6 +56,23 @@ def step_then_reply_contains_dns_configuration(context, dns_server, domain):
     assert replies, "No matching DHCPv6 REPLY for INFORMATION-REQUEST received"
 
     reply = replies[0]
+    assert _get_server_duid(reply), (
+        "DHCPv6 INFORMATION-REQUEST REPLY missing Server Identifier"
+    )
+    client_id = reply.getlayer(_cls("DHCP6OptClientId"))
+    actual_client_duid = getattr(client_id, "duid", None)
+    expected_client_duid = _client_duid()
+    assert _duids_equal(actual_client_duid, expected_client_duid), (
+        "DHCPv6 INFORMATION-REQUEST REPLY has an unexpected Client Identifier: "
+        f"expected {expected_client_duid!r}, got {actual_client_duid!r}"
+    )
+    assert reply.getlayer(_cls("DHCP6OptIA_NA")) is None, (
+        "DHCPv6 INFORMATION-REQUEST REPLY unexpectedly assigned a non-temporary address"
+    )
+    assert reply.getlayer(_cls("DHCP6OptIAAddress")) is None, (
+        "DHCPv6 INFORMATION-REQUEST REPLY unexpectedly included an address lease"
+    )
+
     dns_option = reply.getlayer(_cls("DHCP6OptDNSServers"))
     assert dns_option, "DHCPv6 REPLY missing DNS Recursive Name Server option"
     dns_servers = {ipaddress.ip_address(address) for address in dns_option.dnsservers}
