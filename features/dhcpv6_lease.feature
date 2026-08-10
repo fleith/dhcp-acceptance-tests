@@ -1,5 +1,5 @@
 @ipv6
-Feature: DHCPv6 lease assignment and renewal (RFC 8415)
+Feature: DHCPv6 lease assignment and renewal (RFC 9915)
   The server should assign and renew IPv6 leases for a stateful DHCPv6 client.
 
   Scenario: Client obtains a new DHCPv6 lease

@@ -1,5 +1,5 @@
 @ipv6
-Feature: DHCPv6 lease lifetime validation (RFC 8415)
+Feature: DHCPv6 lease lifetime validation (RFC 9915)
   The server should return consistent renewal and address lifetimes for a lease.
 
   Scenario: DHCPv6 lease includes expected IA_NA and address lifetimes

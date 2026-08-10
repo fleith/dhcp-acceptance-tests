@@ -1,4 +1,4 @@
-"""DHCPv6 RELEASE coverage from RFC 8415."""
+"""DHCPv6 RELEASE coverage from RFC 9915."""
 
 from behave import then, when
 
