@@ -77,7 +77,7 @@ Current suite covers key behaviors from:
 - **RFC 3046**: relay-agent-information (Option 82) request acceptance path.
 - **RFC 3396**: concatenated option fragment acceptance path.
 - **RFC 6842**: client-identifier based lease stability across different hardware addresses.
-- **RFC 8415**: DHCPv6 SOLICIT/ADVERTISE/REQUEST/REPLY and RENEW acceptance paths.
+- **RFC 8415**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, and stateless INFORMATION-REQUEST configuration paths.
 
 ## Project structure
 
@@ -103,11 +103,22 @@ dhcp-acceptance-tests/
 |   |-- dhcp_rfc3046_relay_agent.feature
 |   |-- dhcp_rfc3396_option_concat.feature
 |   |-- dhcp_rfc6842_client_identifier.feature
+|   |-- dhcpv6_decline.feature
+|   |-- dhcpv6_information.feature
 |   |-- dhcpv6_lease.feature
+|   |-- dhcpv6_lifetimes.feature
+|   |-- dhcpv6_rebind.feature
+|   |-- dhcpv6_release.feature
 |   |-- environment.py
 |   `-- steps/
 |       |-- dhcp_steps.py
-|       `-- dhcpv6_steps.py
+|       |-- dhcpv6_decline_steps.py
+|       |-- dhcpv6_information_steps.py
+|       |-- dhcpv6_lifetime_steps.py
+|       |-- dhcpv6_rebind_steps.py
+|       |-- dhcpv6_release_steps.py
+|       |-- dhcpv6_steps.py
+|       `-- dhcpv6_support.py
 |-- docker-compose.yml
 |-- docker-compose.kea.yml
 |-- docker-compose.ipv6.yml

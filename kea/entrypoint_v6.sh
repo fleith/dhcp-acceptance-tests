@@ -5,6 +5,7 @@ IFACE="${1:-eth0}"
 DHCPV6_SUBNET="${DHCPV6_SUBNET:-fd00:29::/64}"
 DHCPV6_POOL="${DHCPV6_POOL:-fd00:29::100 - fd00:29::1ff}"
 DHCPV6_DNS="${DHCPV6_DNS:-2001:4860:4860::8888}"
+DHCPV6_DOMAIN_SEARCH="${DHCPV6_DOMAIN_SEARCH:-example.test}"
 
 if ! ip -6 addr show "$IFACE" | grep -q "scope global"; then
     echo "[kea6] ERROR: No global IPv6 address on $IFACE" >&2
@@ -64,7 +65,8 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
         "interface": "$IFACE",
         "pools": [ { "pool": "$DHCPV6_POOL" } ],
         "option-data": [
-          { "name": "dns-servers", "data": "$DHCPV6_DNS" }
+          { "name": "dns-servers", "data": "$DHCPV6_DNS" },
+          { "name": "domain-search", "data": "$DHCPV6_DOMAIN_SEARCH" }
         ]
       }
     ],

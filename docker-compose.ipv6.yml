@@ -8,6 +8,7 @@ services:
       DHCPV6_RANGE_END: fd00:29::1ff
       DHCPV6_POOL: fd00:29::100 - fd00:29::1ff
       DHCPV6_DNS: 2001:4860:4860::8888
+      DHCPV6_DOMAIN_SEARCH: example.test
     networks:
       dhcp-test-net:
         ipv6_address: fd00:29::2
