@@ -3,6 +3,16 @@ import time
 import ipaddress
 import os
 from behave import given, when, then
+from dhcpv4_support import (
+    assert_dhcp_option as _support_assert_dhcp_option,
+    client_mac as _support_client_mac,
+    dhcp_option as _support_get_dhcp_option,
+    dhcp_options as _support_get_dhcp_options,
+    dhcp_packets as _support_dhcp_packets,
+    mac_bytes as _support_mac_bytes,
+    raw_dhcp_option as _support_get_raw_option,
+    start_dhcp_sniffer as _support_start_dhcp_sniffer,
+)
 
 try:
     from scapy.all import Ether, IP, UDP, BOOTP, DHCP, send, sendp, sniff, AsyncSniffer
@@ -35,7 +45,7 @@ context_storage = {}
 
 
 def _mac_bytes(mac):
-    return bytes.fromhex(mac.replace(":", ""))
+    return _support_mac_bytes(mac)
 
 
 def _client_mac():
@@ -48,7 +58,7 @@ def _client_mac():
     CLIENT_MAC constant when context_storage hasn't been initialised (e.g. unit
     tests that call step functions directly).
     """
-    return context_storage.get('client_mac', CLIENT_MAC)
+    return _support_client_mac(context_storage, CLIENT_MAC)
 
 
 def _start_dhcp_sniffer(timeout=5):
@@ -58,12 +68,7 @@ def _start_dhcp_sniffer(timeout=5):
     for CLIENT_MAC (e.g. DHCPINFORM responses) even when that MAC differs from
     the interface's own hardware address.
     """
-    sniffer = AsyncSniffer(
-        iface=INTERFACE, lfilter=lambda p: p.haslayer(DHCP), timeout=timeout, promisc=True
-    )
-    sniffer.start()
-    time.sleep(0.1)  # give the sniffer thread time to open its socket
-    return sniffer
+    return _support_start_dhcp_sniffer(INTERFACE, timeout)
 
 
 def _dhcp_packets(sniffer, msg_type, xid, server_id=None):
@@ -79,18 +84,7 @@ def _dhcp_packets(sniffer, msg_type, xid, server_id=None):
     returned.  This filters out responses from other DHCP servers on the same
     broadcast domain (e.g. the WSL2/Docker gateway DHCP server).
     """
-    sniffer.join()
-    pkts = [
-        p for p in (sniffer.results or [])
-        if p.haslayer(DHCP)
-        and p.haslayer(BOOTP)
-        and _get_dhcp_options_dict(p).get('message-type') == msg_type
-        and p[BOOTP].xid == xid
-    ]
-    if server_id is not None:
-        pkts = [p for p in pkts
-                if _get_dhcp_option(p, 'server_id') == server_id]
-    return pkts
+    return _support_dhcp_packets(sniffer, msg_type, xid, server_id)
 
 
 def _get_dhcp_options_dict(pkt):
@@ -99,21 +93,15 @@ def _get_dhcp_options_dict(pkt):
     Scapy stores DHCP options as tuples of varying length; ('end',) is a
     1-element tuple, so we must not unpack blindly.
     """
-    if not pkt or not pkt.haslayer(DHCP):
-        return {}
-    return {opt[0]: opt[1] for opt in pkt[DHCP].options
-            if len(opt) >= 2 and isinstance(opt[0], str)
-            and opt[0] not in ('end', 'pad')}
+    return _support_get_dhcp_options(pkt)
 
 
 def _assert_dhcp_option(pkt, option_name):
-    opts = _get_dhcp_options_dict(pkt)
-    assert option_name in opts, \
-        f"DHCPACK missing option '{option_name}'; present: {list(opts.keys())}"
+    _support_assert_dhcp_option(pkt, option_name)
 
 
 def _get_dhcp_option(pkt, option_name):
-    return _get_dhcp_options_dict(pkt).get(option_name)
+    return _support_get_dhcp_option(pkt, option_name)
 
 
 def _get_dhcp_raw_option(pkt, code, names=()):
@@ -122,15 +110,7 @@ def _get_dhcp_raw_option(pkt, code, names=()):
     Some options (e.g. 81, Client FQDN) are exposed by name in newer Scapy
     releases and as a raw integer key in older ones, so match on both.
     """
-    if not pkt or not pkt.haslayer(DHCP):
-        return None
-    for opt in pkt[DHCP].options:
-        if not isinstance(opt, (tuple, list)) or len(opt) < 2:
-            continue
-        key = opt[0]
-        if key == code or (isinstance(key, str) and key in names):
-            return opt[1]
-    return None
+    return _support_get_raw_option(pkt, code, names)
 
 
 def _subnet_prefixlen():
