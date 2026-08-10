@@ -116,6 +116,23 @@ def _get_dhcp_option(pkt, option_name):
     return _get_dhcp_options_dict(pkt).get(option_name)
 
 
+def _get_dhcp_raw_option(pkt, code, names=()):
+    """Return a DHCP option value identified by numeric code or Scapy name.
+
+    Some options (e.g. 81, Client FQDN) are exposed by name in newer Scapy
+    releases and as a raw integer key in older ones, so match on both.
+    """
+    if not pkt or not pkt.haslayer(DHCP):
+        return None
+    for opt in pkt[DHCP].options:
+        if not isinstance(opt, (tuple, list)) or len(opt) < 2:
+            continue
+        key = opt[0]
+        if key == code or (isinstance(key, str) and key in names):
+            return opt[1]
+    return None
+
+
 def _subnet_prefixlen():
     return ipaddress.ip_network(SUBNET, strict=False).prefixlen
 
@@ -714,7 +731,7 @@ def step_then_same_ip_offered(context):
 
 
 # ---------------------------------------------------------------------------
-# RFC 3011 / RFC 3046 / RFC 3396 / RFC 6842 coverage
+# RFC 3011 / RFC 3046 / RFC 3396 / RFC 4702 / RFC 6842 coverage
 # ---------------------------------------------------------------------------
 
 @when('a client sends a DHCPDISCOVER with Subnet Selection option for the served subnet')
@@ -974,3 +991,77 @@ def step_then_same_ip_for_client_id(context):
     ip2 = context_storage.get('rfc6842_second_ip')
     assert ip1 and ip2, "Missing captured offers for RFC 6842 comparison"
     assert ip1 == ip2, f"Expected same lease for same client-id, got {ip1} then {ip2}"
+
+
+# RFC 4702 Client FQDN option (option 81) carried in both the DISCOVER and the
+# REQUEST.  flags=0x05 sets E (canonical DNS wire-format encoding) and S (client
+# asks the server to perform the forward A RR update); RCODE1/RCODE2 are 0 in
+# client messages.  The domain name uses length-prefixed labels per the E bit.
+_RFC4702_FQDN_LABEL = b'testclient'
+_RFC4702_FQDN_OPTION = b'\x05\x00\x00\x0atestclient\x07example\x03com\x00'
+
+
+@when('a client completes a DORA exchange carrying the Client FQDN option')
+def step_when_dora_with_fqdn(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    mac = _client_mac()
+    xid = int.from_bytes(os.urandom(4), 'big')
+    discover = (
+        Ether(src=mac, dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(mac), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'discover'),
+            (81, _RFC4702_FQDN_OPTION),
+            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('end'),
+        ])
+    )
+    discover_sniffer = _start_dhcp_sniffer()
+    sendp(discover, iface=INTERFACE, verbose=False)
+    offer_pkts = _dhcp_packets(discover_sniffer, msg_type=2, xid=xid, server_id=DHCP_SERVER_IP)
+    assert offer_pkts, f"No DHCPOFFER from {DHCP_SERVER_IP}"
+    offered_ip = offer_pkts[0][BOOTP].yiaddr
+    assert ipaddress.ip_address(offered_ip) in ipaddress.ip_network(SUBNET), \
+        f"Offered IP {offered_ip} not in subnet {SUBNET}"
+
+    # The REQUEST must also carry option 81: RFC 4702 negotiation is per-message,
+    # so the server only echoes the FQDN option into the DHCPACK when the
+    # accepted REQUEST itself contains one.
+    request = (
+        Ether(src=mac, dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(mac), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'request'),
+            ('server_id', DHCP_SERVER_IP),
+            ('requested_addr', offered_ip),
+            (81, _RFC4702_FQDN_OPTION),
+            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('end'),
+        ])
+    )
+    request_sniffer = _start_dhcp_sniffer()
+    sendp(request, iface=INTERFACE, verbose=False)
+    ack_pkts = _dhcp_packets(request_sniffer, msg_type=5, xid=xid, server_id=DHCP_SERVER_IP)
+    assert ack_pkts, "No DHCPACK received"
+    context_storage['rfc4702_ack'] = ack_pkts[0]
+
+
+@then('the server\'s DHCPACK echoes the Client FQDN option')
+def step_then_ack_echoes_fqdn(context):
+    ack = context_storage.get('rfc4702_ack')
+    assert ack is not None, "No DHCPACK captured for the RFC 4702 exchange"
+    fqdn_value = _get_dhcp_raw_option(ack, 81, ('client_FQDN', 'client_fqdn', 'fqdn'))
+    present = [o[0] for o in ack[DHCP].options if isinstance(o, (tuple, list))]
+    assert fqdn_value is not None, \
+        f"DHCPACK did not echo the Client FQDN option (81); options present: {present}"
+    if isinstance(fqdn_value, str):
+        raw = fqdn_value.encode('latin-1', 'ignore')
+    else:
+        raw = bytes(fqdn_value)
+    assert _RFC4702_FQDN_LABEL in raw, \
+        f"Echoed FQDN option does not contain the requested name; got {raw!r}"
