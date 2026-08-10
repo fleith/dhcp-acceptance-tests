@@ -69,16 +69,26 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 
 ## Coverage snapshot
 
-Current suite covers key behaviors from:
+Server-focused coverage spans 12 RFCs: the existing eight plus RFC 3442,
+RFC 4361, RFC 4704, and RFC 8925.
 
 - **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM, NAK/DECLINE handling.
 - **RFC 2132**: required network options and T1/T2 lease timer validation.
 - **RFC 3011**: Subnet Selection Option (option 118) acceptance on ISC and Kea, plus alternate-subnet selection path on Kea in the multi-subnet Docker topology.
 - **RFC 3046**: relay-agent-information (Option 82) request acceptance path.
 - **RFC 3396**: concatenated option fragment acceptance path.
-- **RFC 4702**: Client FQDN option (Option 81) negotiation — server echoes the option in its DHCPACK.
+- **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, and unusual parameter request lists.
+- **RFC 4361**: node-specific DHCPv4 client identifiers, stable identity across hardware changes, IAID/DUID isolation, and malformed identifier recovery.
+- **RFC 4702**: Client FQDN option (Option 81) negotiation - server echoes the option in its DHCPACK.
+- **RFC 4704**: DHCPv6 Client FQDN negotiation. Kea runs the positive negotiation scenarios; ISC runs only the universal omission checks in this fixture. A tagged, default-excluded known divergence documents that Kea 2.2 returns FQDN without an ORO request.
 - **RFC 6842**: client-identifier based lease stability across different hardware addresses.
-- **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, and stateless INFORMATION-REQUEST configuration paths.
+- **RFC 8925**: requested IPv6-Only Preferred option delivery, timer encoding, deliberate IPv4 fallback processing, request-list stability, and subnet/client omission behavior.
+- **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, and IA_PD prefix delegation paths. IA_PD deepens this existing RFC coverage rather than adding another RFC to the count.
+
+Additional coverage is intentionally excluded from the 12-RFC server count:
+
+- **RFC 5227**: client-companion IPv4 Address Conflict Detection, including conflict, no-conflict, and DHCPDECLINE paths; this is not DHCP server compliance coverage.
+- **RFC 4039**: unsupported DHCPv4 Rapid Commit fallback and malformed-option recovery, tagged as non-compliance coverage; neither backend claims RFC 4039 support.
 
 ## Project structure
 
@@ -103,21 +113,36 @@ dhcp-acceptance-tests/
 |   |-- dhcp_rfc3011_subnet_selection.feature
 |   |-- dhcp_rfc3046_relay_agent.feature
 |   |-- dhcp_rfc3396_option_concat.feature
+|   |-- dhcp_rfc3442_classless_routes.feature
+|   |-- dhcp_rfc4039_rapid_commit_fallback.feature
+|   |-- dhcp_rfc4361_node_client_id.feature
 |   |-- dhcp_rfc4702_client_fqdn.feature
+|   |-- dhcp_rfc5227_address_conflict_detection.feature
 |   |-- dhcp_rfc6842_client_identifier.feature
+|   |-- dhcp_rfc8925_ipv6_only_preferred.feature
 |   |-- dhcpv6_decline.feature
 |   |-- dhcpv6_information.feature
 |   |-- dhcpv6_lease.feature
 |   |-- dhcpv6_lifetimes.feature
+|   |-- dhcpv6_prefix_delegation.feature
 |   |-- dhcpv6_rebind.feature
 |   |-- dhcpv6_release.feature
+|   |-- dhcpv6_rfc4704_client_fqdn.feature
 |   |-- environment.py
 |   `-- steps/
 |       |-- dhcp_steps.py
+|       |-- dhcpv4_support.py
+|       |-- dhcp_rfc3442_steps.py
+|       |-- dhcp_rfc4039_steps.py
+|       |-- dhcp_rfc4361_steps.py
+|       |-- dhcp_rfc5227_steps.py
+|       |-- dhcp_rfc8925_steps.py
 |       |-- dhcpv6_decline_steps.py
 |       |-- dhcpv6_information_steps.py
 |       |-- dhcpv6_lifetime_steps.py
+|       |-- dhcpv6_prefix_delegation_steps.py
 |       |-- dhcpv6_rebind_steps.py
+|       |-- dhcpv6_rfc4704_steps.py
 |       |-- dhcpv6_release_steps.py
 |       |-- dhcpv6_steps.py
 |       `-- dhcpv6_support.py

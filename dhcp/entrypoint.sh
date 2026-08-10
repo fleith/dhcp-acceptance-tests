@@ -14,6 +14,7 @@ IP="${IP_PREFIX%%/*}"
 PREFIX="${IP_PREFIX##*/}"
 ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
 ALT_SERVER_IP="${RFC3011_ALT_SERVER_IP:-}"
+RFC8925_WAIT="${RFC8925_WAIT:-1800}"
 
 # Convert prefix length to dotted-decimal netmask
 prefix_to_netmask() {
@@ -82,6 +83,10 @@ max-lease-time 120;
 option dhcp-renewal-time 60;
 option dhcp-rebinding-time 105;
 
+# RFC 3442 and RFC 8925 options are scoped to the primary test subnet below.
+option classless-static-routes code 121 = array of unsigned integer 8;
+option v6-only-preferred code 108 = unsigned integer 32;
+
 # RFC 4702: enable DDNS so dhcpd negotiates the Client FQDN option (81) and
 # echoes it back in the OFFER/ACK.  The .test TLD (RFC 6761) keeps any actual
 # DNS update attempt local and fast-failing; the acceptance test only exercises
@@ -100,6 +105,11 @@ subnet $NET netmask $NETMASK {
     option routers ${NET3}.1;
     option subnet-mask $NETMASK;
     option domain-name-servers 8.8.8.8;
+    option classless-static-routes
+        0, $n1, $n2, $n3, 254,
+        25, 198, 51, 100, 128, $n1, $n2, $n3, 254,
+        24, 203, 0, 113, $n1, $n2, $n3, 254;
+    option v6-only-preferred $RFC8925_WAIT;
 }
 subnet $ALT_NET netmask $NETMASK {
     always-broadcast on;

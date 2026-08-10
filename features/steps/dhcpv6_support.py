@@ -85,11 +85,12 @@ def iaid():
     return context_storage_v6["iaid"]
 
 
-def start_v6_sniffer(timeout=10):
+def start_v6_sniffer(timeout=10, stop_filter=None):
     sniffer = AsyncSniffer(
         iface=INTERFACE,
         lfilter=lambda packet: packet.haslayer(UDP)
         and (packet[UDP].sport == 547 or packet[UDP].dport == 547),
+        stop_filter=stop_filter,
         timeout=timeout,
         promisc=True,
     )
