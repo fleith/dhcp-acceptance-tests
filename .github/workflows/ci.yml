@@ -5,9 +5,13 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"
 
 jobs:
   test:
+    name: Required / ${{ matrix.server }} / ${{ matrix.ip_version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -27,6 +31,66 @@ jobs:
 
       - name: Run tests
         run: bash ./run_dhcp_tests.sh --server ${{ matrix.server }} --ip-version ${{ matrix.ip_version }}
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down
+
+  compatibility:
+    name: Informational / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - name: ISC DHCP 4.4.3-P1 / v4
+            server: isc-dhcpd
+            server_version: isc-final
+            ip_version: v4
+            extra_args: ""
+          - name: ISC DHCP 4.4.3-P1 / v6
+            server: isc-dhcpd
+            server_version: isc-final
+            ip_version: v6
+            extra_args: ""
+          - name: Kea 3.0.3 LTS / v4
+            server: kea
+            server_version: kea-lts
+            ip_version: v4
+            extra_args: ""
+          - name: Kea 3.0.3 LTS / v6
+            server: kea
+            server_version: kea-lts
+            ip_version: v6
+            extra_args: ""
+          - name: Kea 3.2.0 stable / v4
+            server: kea
+            server_version: kea-stable
+            ip_version: v4
+            extra_args: ""
+          - name: Kea 3.2.0 stable / v6
+            server: kea
+            server_version: kea-stable
+            ip_version: v6
+            extra_args: ""
+          - name: Kea baseline / known divergences
+            server: kea
+            server_version: baseline
+            ip_version: v6
+            extra_args: "--tags @known_divergence"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run informational compatibility tests
+        run: >-
+          bash ./run_dhcp_tests.sh
+          --server ${{ matrix.server }}
+          --server-version ${{ matrix.server_version }}
+          --ip-version ${{ matrix.ip_version }}
+          ${{ matrix.extra_args }}
 
       - name: Tear down containers
         if: always()

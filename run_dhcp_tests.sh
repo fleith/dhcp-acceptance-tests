@@ -2,13 +2,17 @@
 # Run DHCP acceptance tests using docker compose.
 #
 # Usage:
-#   bash ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual] [-- <extra compose args>]
+#   bash ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual]
+#       [--server-version baseline|isc-final|kea-lts|kea-stable]
+#       [--tags TAG_EXPRESSION] [-- <extra compose args>]
 #
 # Examples:
 #   bash ./run_dhcp_tests.sh
 #   bash ./run_dhcp_tests.sh --server kea
 #   bash ./run_dhcp_tests.sh --ip-version v6
 #   bash ./run_dhcp_tests.sh --server kea --ip-version dual
+#   bash ./run_dhcp_tests.sh --server kea --server-version kea-stable --ip-version v6
+#   bash ./run_dhcp_tests.sh --server kea --ip-version v6 --tags @known_divergence
 
 set -euo pipefail
 
@@ -17,6 +21,8 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 
 SERVER="isc-dhcpd"
 IP_VERSION="v4"
+SERVER_VERSION="baseline"
+BEHAVE_TAGS=""
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -29,6 +35,16 @@ while [[ $# -gt 0 ]]; do
     --ip-version)
       [[ $# -ge 2 ]] || { echo "[ERROR] --ip-version requires a value"; exit 2; }
       IP_VERSION="$2"
+      shift 2
+      ;;
+    --server-version)
+      [[ $# -ge 2 ]] || { echo "[ERROR] --server-version requires a value"; exit 2; }
+      SERVER_VERSION="$2"
+      shift 2
+      ;;
+    --tags)
+      [[ $# -ge 2 ]] || { echo "[ERROR] --tags requires a value"; exit 2; }
+      BEHAVE_TAGS="$2"
       shift 2
       ;;
     --)
@@ -72,19 +88,63 @@ build_compose_files() {
   esac
 }
 
+configure_version_profile() {
+  local mode="$1"
+
+  unset ISC_DHCP_BASE_IMAGE KEA_BASE_IMAGE KEA_INSTALL_MODE TEST_BEHAVE_ARGS
+
+  case "$SERVER_VERSION" in
+    baseline)
+      VERSION_LABEL="distribution baseline"
+      ;;
+    isc-final)
+      [[ "$SERVER" == "isc-dhcpd" ]] || {
+        echo "[ERROR] isc-final requires --server isc-dhcpd"
+        exit 2
+      }
+      export ISC_DHCP_BASE_IMAGE="debian:bookworm-slim"
+      VERSION_LABEL="ISC DHCP 4.4.3-P1 final release line"
+      ;;
+    kea-lts|kea-stable)
+      [[ "$SERVER" == "kea" ]] || {
+        echo "[ERROR] $SERVER_VERSION requires --server kea"
+        exit 2
+      }
+      local kea_version
+      if [[ "$SERVER_VERSION" == "kea-lts" ]]; then
+        kea_version="3.0.3"
+        VERSION_LABEL="Kea 3.0.3 LTS"
+      else
+        kea_version="3.2.0"
+        VERSION_LABEL="Kea 3.2.0 stable"
+      fi
+      export KEA_BASE_IMAGE="docker.cloudsmith.io/isc/docker/kea-dhcp${mode#v}:${kea_version}"
+      export KEA_INSTALL_MODE="alpine"
+      ;;
+    *)
+      echo "[ERROR] Unsupported server version '$SERVER_VERSION'." \
+           "Use baseline, isc-final, kea-lts, or kea-stable."
+      exit 2
+      ;;
+  esac
+
+  if [[ -n "$BEHAVE_TAGS" ]]; then
+    export TEST_BEHAVE_ARGS="--tags=${BEHAVE_TAGS}"
+  fi
+}
+
 run_once() {
   local mode="$1"
   local rc=0
   local up_args=(--abort-on-container-exit --exit-code-from test-runner)
 
+  configure_version_profile "$mode"
   build_compose_files "$mode"
 
-  if [[ "$SERVER" == "kea" ]]; then
-    # Ensure the selected Kea image (dhcp4 or dhcp6 entrypoint) is rebuilt.
-    up_args+=(--build)
-  fi
+  # Build arguments select the requested server release profile.
+  up_args+=(--build)
 
-  echo "[INFO] Running tests against server=${SERVER} ip_version=${mode}"
+  echo "[INFO] Running tests against server=${SERVER} ip_version=${mode} version=${VERSION_LABEL}"
   docker compose "${COMPOSE_FILES[@]}" up "${up_args[@]}" "${EXTRA_ARGS[@]}" || rc=$?
 
   echo "[INFO] Stopping docker compose stack for ip_version=${mode}..."

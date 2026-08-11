@@ -3,6 +3,7 @@
 import ipaddress
 import os
 import re
+import shlex
 import subprocess
 import sys
 
@@ -70,7 +71,7 @@ elif ip_version == 'v6':
     env.setdefault('TEST_SERVER_IPV6', server_ip)
     env.setdefault('TEST_SUBNET_V6', subnet)
 
-behave_args = sys.argv[1:]
+behave_args = shlex.split(os.getenv('TEST_BEHAVE_ARGS', '')) + sys.argv[1:]
 if not has_explicit_tags(behave_args):
     if ip_version == 'v4':
         behave_args = ['--tags=~@ipv6'] + behave_args
