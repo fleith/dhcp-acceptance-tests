@@ -66,6 +66,8 @@ def step_when_send_solicit(context):
         / _cls("DHCP6OptElapsedTime")(elapsedtime=0)
         / _ia_na(context_storage_v6.pop("solicit_ipv6_hint", None))
     )
+    if context_storage_v6.pop("include_reconfigure_accept", False):
+        solicit /= _cls("DHCP6OptReconfAccept")()
 
     sniffer = _start_v6_sniffer(timeout=12)
     sendp(solicit, iface=INTERFACE, verbose=False)

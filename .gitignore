@@ -4,3 +4,4 @@ __pycache__/
 dhcp/data/dhcpd.leases
 dhcp/data/dhcpd.leases~
 .claude/
+test-results/
