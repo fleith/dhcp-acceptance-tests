@@ -15,6 +15,8 @@ def parse_args():
     parser.add_argument("--summary-file")
     parser.add_argument("--run-outcome", choices=("success", "failure", "cancelled"))
     parser.add_argument("--expected-failure-pattern", action="append", default=[])
+    parser.add_argument("--log-file")
+    parser.add_argument("--expected-log-pattern", action="append", default=[])
     return parser.parse_args()
 
 
@@ -83,7 +85,33 @@ def classify_failures(failures, patterns):
     return expected, unexpected
 
 
-def markdown(args, files, totals, expected, unexpected):
+def classify_runtime_failure(run_outcome, failures, log_text, patterns):
+    if run_outcome not in ("failure", "cancelled"):
+        return [], []
+
+    normalized_log = log_text.lower()
+    expected_patterns = [pattern for pattern in patterns if pattern]
+    missing_patterns = [
+        pattern for pattern in expected_patterns if pattern.lower() not in normalized_log
+    ]
+    if expected_patterns and not missing_patterns:
+        return expected_patterns, []
+    if missing_patterns:
+        return [], missing_patterns
+    if not failures:
+        return [], ["no classified JUnit scenario failure"]
+    return [], []
+
+
+def markdown(
+    args,
+    files,
+    totals,
+    expected,
+    unexpected,
+    expected_runtime,
+    unexpected_runtime,
+):
     passed = max(
         totals["tests"] - totals["failures"] - totals["errors"] - totals["skipped"],
         0,
@@ -105,6 +133,12 @@ def markdown(args, files, totals, expected, unexpected):
     if unexpected:
         lines.extend(["", "**Unexpected failures**"])
         lines.extend(f"- `{item['source']}`: {item['name']}" for item in unexpected)
+    if expected_runtime:
+        lines.extend(["", "**Expected runtime compatibility signature**"])
+        lines.extend(f"- `{pattern}`" for pattern in expected_runtime)
+    if unexpected_runtime:
+        lines.extend(["", "**Unexpected runtime failure**"])
+        lines.extend(f"- Missing expected signature: `{pattern}`" for pattern in unexpected_runtime)
     if not files:
         lines.extend(["", "No JUnit reports were produced."])
     return "\n".join(lines) + "\n"
@@ -122,7 +156,24 @@ def main():
     expected, unexpected = classify_failures(
         failures, args.expected_failure_pattern
     )
-    report = markdown(args, files, totals, expected, unexpected)
+    log_text = ""
+    if args.log_file and Path(args.log_file).exists():
+        log_text = Path(args.log_file).read_text(encoding="utf-8", errors="replace")
+    expected_runtime, unexpected_runtime = classify_runtime_failure(
+        args.run_outcome,
+        failures,
+        log_text,
+        args.expected_log_pattern,
+    )
+    report = markdown(
+        args,
+        files,
+        totals,
+        expected,
+        unexpected,
+        expected_runtime,
+        unexpected_runtime,
+    )
     print(report, end="")
 
     summary_file = args.summary_file or os.getenv("GITHUB_STEP_SUMMARY")
@@ -134,15 +185,20 @@ def main():
         emit_annotation("warning", "Expected compatibility difference", item["name"])
     for item in unexpected:
         emit_annotation("error", "Unexpected DHCP test failure", item["name"])
-
-    if unexpected:
-        return 1
-    if args.run_outcome in ("failure", "cancelled") and not failures:
+    for pattern in expected_runtime:
+        emit_annotation(
+            "warning",
+            "Expected runtime compatibility difference",
+            f"The test command failed with signature: {pattern}",
+        )
+    for pattern in unexpected_runtime:
         emit_annotation(
             "error",
-            "DHCP test infrastructure failure",
-            "The test command failed without a classified JUnit scenario failure.",
+            "Unexpected DHCP test runtime failure",
+            f"Missing expected failure signature: {pattern}",
         )
+
+    if unexpected or unexpected_runtime:
         return 1
     return 0
 

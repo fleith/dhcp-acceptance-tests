@@ -16,7 +16,7 @@ The recommended entrypoint is the helper script:
 
 ```bash
 bash ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual] \
-  [--server-version baseline|isc-final|kea-lts|kea-stable] [--tags TAG_EXPRESSION]
+  [--server-version baseline|isc-final|kea-lts|kea-stable] [--tags TAG_EXPRESSION]...
 ```
 
 Examples:
@@ -59,6 +59,11 @@ The Kea 3.x IPv4 profiles currently expose an RFC 8925 behavior change: option
 deliberate IPv4 fallback flow. This remains visible in the informational matrix
 as an expected compatibility warning. Any unrelated failure in the same job is
 still treated as a regression.
+
+The Kea 3.0.3 and 3.2.0 DHCPv6 profiles also abort on a malformed RELAY-FORWARD
+that omits the mandatory Relay Message option. CI runs that robustness probe in
+dedicated expected-divergence rows and excludes it only from the corresponding
+full Kea 3.x IPv6 rows, allowing every other IPv6 scenario to finish.
 
 Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet.
 
@@ -196,7 +201,9 @@ GitHub Actions runs the supported matrix:
 These four baseline jobs are required. A separate compatibility matrix covers
 ISC DHCP 4.4.3-P1, Kea 3.0.3 LTS, Kea 3.2.0 stable, and explicitly tagged known
 divergences. The documented Kea 3.x RFC 8925 difference is reported as a
-warning; unclassified compatibility failures still fail their job.
+warning. The Kea 3.x malformed DHCPv6 relay crash is isolated in dedicated
+robustness rows so it cannot truncate the full IPv6 runs. Unclassified
+compatibility failures still fail their job.
 
 Every matrix row writes a Markdown summary and uploads its JUnit reports for 14
 days, including failed runs. The full workflow also runs every Monday and can
