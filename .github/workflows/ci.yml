@@ -30,16 +30,33 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run tests
+        id: required-tests
         run: bash ./run_dhcp_tests.sh --server ${{ matrix.server }} --ip-version ${{ matrix.ip_version }}
 
       - name: Tear down containers
         if: always()
         run: docker compose down
 
+      - name: Publish test summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Required / ${{ matrix.server }} / ${{ matrix.ip_version }}"
+          --run-outcome "${{ steps.required-tests.outcome }}"
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-${{ matrix.server }}-${{ matrix.ip_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   compatibility:
     name: Informational / ${{ matrix.name }}
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -50,41 +67,50 @@ jobs:
             server_version: isc-final
             ip_version: v4
             extra_args: ""
+            expected_failure_pattern: ""
           - name: ISC DHCP 4.4.3-P1 / v6
             server: isc-dhcpd
             server_version: isc-final
             ip_version: v6
             extra_args: ""
+            expected_failure_pattern: ""
           - name: Kea 3.0.3 LTS / v4
             server: kea
             server_version: kea-lts
             ip_version: v4
             extra_args: ""
+            expected_failure_pattern: dhcp_rfc8925_ipv6_only_preferred
           - name: Kea 3.0.3 LTS / v6
             server: kea
             server_version: kea-lts
             ip_version: v6
             extra_args: ""
+            expected_failure_pattern: ""
           - name: Kea 3.2.0 stable / v4
             server: kea
             server_version: kea-stable
             ip_version: v4
             extra_args: ""
+            expected_failure_pattern: dhcp_rfc8925_ipv6_only_preferred
           - name: Kea 3.2.0 stable / v6
             server: kea
             server_version: kea-stable
             ip_version: v6
             extra_args: ""
+            expected_failure_pattern: ""
           - name: Kea baseline / known divergences
             server: kea
             server_version: baseline
             ip_version: v6
             extra_args: "--tags @known_divergence"
+            expected_failure_pattern: ""
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Run informational compatibility tests
+        id: compatibility-tests
+        continue-on-error: ${{ matrix.expected_failure_pattern != '' }}
         run: >-
           bash ./run_dhcp_tests.sh
           --server ${{ matrix.server }}
@@ -95,3 +121,21 @@ jobs:
       - name: Tear down containers
         if: always()
         run: docker compose down
+
+      - name: Publish compatibility summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Informational / ${{ matrix.name }}"
+          --run-outcome "${{ steps.compatibility-tests.outcome }}"
+          ${{ matrix.expected_failure_pattern != '' && format('--expected-failure-pattern {0}', matrix.expected_failure_pattern) || '' }}
+
+      - name: Upload compatibility JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-${{ matrix.server_version }}-${{ matrix.ip_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14

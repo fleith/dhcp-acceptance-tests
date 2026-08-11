@@ -19,6 +19,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 
+# Git Bash rewrites container paths such as /app before invoking Docker.
+case "$(uname -s)" in
+  MINGW*|MSYS*)
+    export MSYS2_ENV_CONV_EXCL="TEST_RESULTS_DIR${MSYS2_ENV_CONV_EXCL:+;${MSYS2_ENV_CONV_EXCL}}"
+    ;;
+esac
+
 SERVER="isc-dhcpd"
 IP_VERSION="v4"
 SERVER_VERSION="baseline"
@@ -92,6 +99,7 @@ configure_version_profile() {
   local mode="$1"
 
   unset ISC_DHCP_BASE_IMAGE KEA_BASE_IMAGE KEA_INSTALL_MODE TEST_BEHAVE_ARGS
+  unset TEST_RESULTS_DIR
 
   case "$SERVER_VERSION" in
     baseline)
@@ -131,6 +139,8 @@ configure_version_profile() {
   if [[ -n "$BEHAVE_TAGS" ]]; then
     export TEST_BEHAVE_ARGS="--tags=${BEHAVE_TAGS}"
   fi
+
+  export TEST_RESULTS_DIR="/app/test-results/${SERVER}-${SERVER_VERSION}-${mode}"
 }
 
 run_once() {

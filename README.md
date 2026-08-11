@@ -57,7 +57,8 @@ compatibility reproducible:
 The Kea 3.x IPv4 profiles currently expose an RFC 8925 behavior change: option
 108 requests receive an addressless OFFER instead of completing the suite's
 deliberate IPv4 fallback flow. This remains visible in the informational matrix
-without blocking the required baseline jobs.
+as an expected compatibility warning. Any unrelated failure in the same job is
+still treated as a regression.
 
 Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet.
 
@@ -86,6 +87,7 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_SUBNET_SELECTION_SUBNET` | `172.29.1.0/24` | Alternate DHCPv4 subnet used by RFC 3011 selection tests |
 | `TEST_LEASE_TIME` | `120` | Lease duration in seconds |
 | `TEST_CLIENT_MAC` | `02:00:00:00:00:01` | Fallback DHCPv4 client MAC |
+| `TEST_RESULTS_DIR` | `/app/test-results/default` | JUnit report directory inside the test runner |
 
 ## Coverage snapshot
 
@@ -103,7 +105,7 @@ RFC 4361, RFC 4704, and RFC 8925.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation. Kea runs the positive negotiation scenarios; ISC runs only the universal omission checks in this fixture. A tagged, default-excluded known divergence documents that Kea 2.2 returns FQDN without an ORO request.
 - **RFC 6842**: client-identifier based lease stability across different hardware addresses.
 - **RFC 8925**: requested IPv6-Only Preferred option delivery, timer encoding, deliberate IPv4 fallback processing, request-list stability, and subnet/client omission behavior.
-- **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, and IA_PD prefix delegation paths. IA_PD deepens this existing RFC coverage rather than adding another RFC to the count.
+- **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. Authenticated server-initiated Reconfigure remains outside the fixture's claims. IA_PD and these lifecycle paths deepen existing RFC coverage rather than adding another RFC to the count.
 
 Additional coverage is intentionally excluded from the 12-RFC server count:
 
@@ -141,11 +143,14 @@ dhcp-acceptance-tests/
 |   |-- dhcp_rfc6842_client_identifier.feature
 |   |-- dhcp_rfc8925_ipv6_only_preferred.feature
 |   |-- dhcpv6_decline.feature
+|   |-- dhcpv6_confirm.feature
 |   |-- dhcpv6_information.feature
 |   |-- dhcpv6_lease.feature
 |   |-- dhcpv6_lifetimes.feature
 |   |-- dhcpv6_prefix_delegation.feature
 |   |-- dhcpv6_rebind.feature
+|   |-- dhcpv6_reconfigure.feature
+|   |-- dhcpv6_relay.feature
 |   |-- dhcpv6_release.feature
 |   |-- dhcpv6_rfc4704_client_fqdn.feature
 |   |-- environment.py
@@ -158,10 +163,13 @@ dhcp-acceptance-tests/
 |       |-- dhcp_rfc5227_steps.py
 |       |-- dhcp_rfc8925_steps.py
 |       |-- dhcpv6_decline_steps.py
+|       |-- dhcpv6_confirm_steps.py
 |       |-- dhcpv6_information_steps.py
 |       |-- dhcpv6_lifetime_steps.py
 |       |-- dhcpv6_prefix_delegation_steps.py
 |       |-- dhcpv6_rebind_steps.py
+|       |-- dhcpv6_reconfigure_steps.py
+|       |-- dhcpv6_relay_steps.py
 |       |-- dhcpv6_rfc4704_steps.py
 |       |-- dhcpv6_release_steps.py
 |       |-- dhcpv6_steps.py
@@ -169,8 +177,11 @@ dhcp-acceptance-tests/
 |-- docker-compose.yml
 |-- docker-compose.kea.yml
 |-- docker-compose.ipv6.yml
+|-- RFC_EXPANSION_PLAN.md
 |-- run_dhcp_tests.sh
 |-- run_tests.py
+|-- summarize_junit.py
+|-- tests/test_summarize_junit.py
 |-- .github/workflows/ci.yml
 `-- requirements.txt
 ```
@@ -182,7 +193,11 @@ GitHub Actions runs the supported matrix:
 - `isc-dhcpd` with `v4` and `v6`
 - `kea` with `v4` and `v6`
 
-These four baseline jobs are required. A separate informational matrix is
-allowed to fail without blocking merges and covers ISC DHCP 4.4.3-P1, Kea
-3.0.3 LTS, Kea 3.2.0 stable, and explicitly tagged known divergences. The full
-workflow also runs every Monday and can be started manually from GitHub.
+These four baseline jobs are required. A separate compatibility matrix covers
+ISC DHCP 4.4.3-P1, Kea 3.0.3 LTS, Kea 3.2.0 stable, and explicitly tagged known
+divergences. The documented Kea 3.x RFC 8925 difference is reported as a
+warning; unclassified compatibility failures still fail their job.
+
+Every matrix row writes a Markdown summary and uploads its JUnit reports for 14
+days, including failed runs. The full workflow also runs every Monday and can
+be started manually from GitHub.

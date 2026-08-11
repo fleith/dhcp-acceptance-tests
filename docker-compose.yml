@@ -45,6 +45,7 @@ services:
       TEST_RFC8925_WAIT: 1800
       TEST_RFC8925_ALT_SERVER_IP: 172.29.0.2
       TEST_BEHAVE_ARGS: ${TEST_BEHAVE_ARGS:-}
+      TEST_RESULTS_DIR: ${TEST_RESULTS_DIR:-/app/test-results/default}
     volumes:
       - .:/app
     working_dir: /app

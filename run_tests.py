@@ -4,6 +4,7 @@ import ipaddress
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 
@@ -81,9 +82,18 @@ if not has_explicit_tags(behave_args):
 if not explicitly_requests_known_divergence(behave_args):
     behave_args = ['--tags=~@known_divergence'] + behave_args
 
+results_dir = os.getenv('TEST_RESULTS_DIR', '/app/test-results/default')
+shutil.rmtree(results_dir, ignore_errors=True)
+os.makedirs(results_dir, exist_ok=True)
+if '--junit' not in behave_args:
+    behave_args = [
+        '--junit',
+        f'--junit-directory={results_dir}',
+    ] + behave_args
+
 print(
     f"[test-runner] ip_version={ip_version} iface={iface} iface_ip={iface_ip} "
-    f"server_ip={server_ip} subnet={subnet}",
+    f"server_ip={server_ip} subnet={subnet} results={results_dir}",
     flush=True,
 )
 
