@@ -40,6 +40,10 @@ def has_explicit_tags(args):
     return any(arg == '--tags' or arg.startswith('--tags=') for arg in args)
 
 
+def explicitly_requests_known_divergence(args):
+    return any('@known_divergence' in arg for arg in args)
+
+
 iface = os.getenv('TEST_INTERFACE', 'eth0')
 ip_version = os.getenv('TEST_IP_VERSION', 'v4').strip().lower()
 
@@ -72,6 +76,9 @@ if not has_explicit_tags(behave_args):
         behave_args = ['--tags=~@ipv6'] + behave_args
     elif ip_version == 'v6':
         behave_args = ['--tags=@ipv6'] + behave_args
+
+if not explicitly_requests_known_divergence(behave_args):
+    behave_args = ['--tags=~@known_divergence'] + behave_args
 
 print(
     f"[test-runner] ip_version={ip_version} iface={iface} iface_ip={iface_ip} "

@@ -6,6 +6,7 @@ services:
     environment:
       RFC3011_ALT_SUBNET: 172.29.1.0/24
       RFC3011_ALT_SERVER_IP: 172.29.1.2
+      RFC8925_WAIT: 1800
     cap_add:
       - NET_ADMIN
     privileged: true
@@ -34,6 +35,12 @@ services:
       TEST_SERVER_IMPL: isc-dhcpd
       TEST_INTERFACE: eth0
       TEST_SUBNET_SELECTION_SUBNET: 172.29.1.0/24
+      TEST_RFC3442_GATEWAY: 172.29.0.254
+      TEST_RFC3442_DEFAULT_ROUTE: 0.0.0.0/0=172.29.0.254
+      TEST_RFC3442_NON_OCTET_ROUTE: 198.51.100.128/25=172.29.0.254
+      TEST_RFC3442_ADDITIONAL_ROUTES: 203.0.113.0/24=172.29.0.254
+      TEST_RFC8925_WAIT: 1800
+      TEST_RFC8925_ALT_SERVER_IP: 172.29.0.2
     volumes:
       - .:/app
     working_dir: /app

@@ -1,5 +1,5 @@
 @ipv6
-Feature: DHCPv6 stateless configuration (RFC 8415)
+Feature: DHCPv6 stateless configuration (RFC 9915)
   The server should provide requested configuration without assigning an address.
 
   Scenario: Client requests DNS configuration

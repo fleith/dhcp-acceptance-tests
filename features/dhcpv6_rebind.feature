@@ -1,5 +1,5 @@
 @ipv6
-Feature: DHCPv6 lease rebinding (RFC 8415)
+Feature: DHCPv6 lease rebinding (RFC 9915)
   A client should be able to extend an active lease when rebinding to any
   available DHCPv6 server.
 

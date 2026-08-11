@@ -1,5 +1,5 @@
 @ipv6
-Feature: DHCPv6 lease release (RFC 8415)
+Feature: DHCPv6 lease release (RFC 9915)
   A released address should become available for assignment to another client.
 
   Scenario: Released DHCPv6 address can be assigned to another client

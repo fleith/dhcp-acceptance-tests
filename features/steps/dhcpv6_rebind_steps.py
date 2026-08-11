@@ -1,4 +1,4 @@
-"""DHCPv6 REBIND acceptance steps for RFC 8415."""
+"""DHCPv6 REBIND acceptance steps for RFC 9915."""
 
 from behave import then, when
 

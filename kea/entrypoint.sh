@@ -12,6 +12,7 @@ fi
 IP="${IP_PREFIX%%/*}"
 PREFIX="${IP_PREFIX##*/}"
 ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
+RFC8925_WAIT="${RFC8925_WAIT:-1800}"
 
 prefix_to_netmask() {
     _p=$1
@@ -54,6 +55,11 @@ ALT_NET="${ALT_SUBNET_CIDR%%/*}"
 ALT_NET3="$(echo "$ALT_NET" | cut -d. -f1-3)"
 ALT_ROUTER_IP="${ALT_NET3}.1"
 
+N1_HEX=$(printf '%02x' "$n1")
+N2_HEX=$(printf '%02x' "$n2")
+N3_HEX=$(printf '%02x' "$n3")
+RFC3442_ROUTES="00:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe:19:c6:33:64:80:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe:18:cb:00:71:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe"
+
 mkdir -p /etc/kea /data /run/kea /var/run/kea /var/lib/kea
 
 # RFC 4702: dhcp-ddns.enable-updates lets kea-dhcp4 negotiate and echo the
@@ -71,6 +77,14 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
     },
     "ddns-send-updates": true,
     "ddns-qualifying-suffix": "dhcp-acceptance.test",
+    "option-def": [
+      {
+        "name": "classless-static-route",
+        "code": 121,
+        "type": "binary",
+        "space": "dhcp4"
+      }
+    ],
     "lease-database": {
       "type": "memfile",
       "name": "/data/kea-leases4.csv",
@@ -86,7 +100,13 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
         "option-data": [
           { "name": "routers", "data": "${NET3}.1" },
           { "name": "subnet-mask", "data": "$NETMASK" },
-          { "name": "domain-name-servers", "data": "8.8.8.8" }
+          { "name": "domain-name-servers", "data": "8.8.8.8" },
+          {
+            "name": "classless-static-route",
+            "data": "$RFC3442_ROUTES",
+            "csv-format": false
+          },
+          { "name": "v6-only-preferred", "data": "$RFC8925_WAIT" }
         ]
       },
       {

@@ -9,6 +9,11 @@ services:
       DHCPV6_POOL: fd00:29::100 - fd00:29::1ff
       DHCPV6_DNS: 2001:4860:4860::8888
       DHCPV6_DOMAIN_SEARCH: example.test
+      DHCPV6_PD_PREFIX: "fd00:30::"
+      DHCPV6_PD_PREFIX_LEN: 60
+      DHCPV6_PD_RANGE_START: "fd00:30::"
+      DHCPV6_PD_RANGE_END: "fd00:30:0:f::"
+      DHCPV6_PD_DELEGATED_LEN: 64
     networks:
       dhcp-test-net:
         ipv6_address: fd00:29::2
@@ -27,6 +32,13 @@ services:
       TEST_IP_VERSION: v6
       TEST_SERVER_IPV6: fd00:29::2
       TEST_INTERFACE: eth0
+      TEST_RFC4704_SERVER_SUFFIX: dhcp-acceptance.test
+      TEST_RFC4704_FQDN: rfc4704-client.dhcp-acceptance.test.
+      TEST_RFC4704_EXPECTED_FQDN: rfc4704-client.dhcp-acceptance.test.
+      TEST_DHCPV6_PD_POOL: fd00:30::/60
+      TEST_DHCPV6_PD_PREFIX_LEN: 64
+      TEST_DHCPV6_PD_HINT_PREFIX_LEN: 64
+      TEST_DHCPV6_PD_POOL_CAPACITY: 16
 
 networks:
   dhcp-test-net:

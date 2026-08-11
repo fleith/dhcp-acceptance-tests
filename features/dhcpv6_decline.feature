@@ -1,5 +1,5 @@
 @ipv6
-Feature: DHCPv6 declined address handling (RFC 8415)
+Feature: DHCPv6 declined address handling (RFC 9915)
   The server should acknowledge declined leases and quarantine suspect addresses.
 
   Scenario: Server does not advertise an address declined by an active client
