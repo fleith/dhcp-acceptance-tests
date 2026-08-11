@@ -4,7 +4,7 @@
 # Usage:
 #   bash ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual]
 #       [--server-version baseline|isc-final|kea-lts|kea-stable]
-#       [--tags TAG_EXPRESSION] [-- <extra compose args>]
+#       [--tags TAG_EXPRESSION]... [-- <extra compose args>]
 #
 # Examples:
 #   bash ./run_dhcp_tests.sh
@@ -29,7 +29,7 @@ esac
 SERVER="isc-dhcpd"
 IP_VERSION="v4"
 SERVER_VERSION="baseline"
-BEHAVE_TAGS=""
+BEHAVE_TAGS=()
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -51,7 +51,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --tags)
       [[ $# -ge 2 ]] || { echo "[ERROR] --tags requires a value"; exit 2; }
-      BEHAVE_TAGS="$2"
+      BEHAVE_TAGS+=("$2")
       shift 2
       ;;
     --)
@@ -136,8 +136,15 @@ configure_version_profile() {
       ;;
   esac
 
-  if [[ -n "$BEHAVE_TAGS" ]]; then
-    export TEST_BEHAVE_ARGS="--tags=${BEHAVE_TAGS}"
+  if (( ${#BEHAVE_TAGS[@]} > 0 )); then
+    local tag
+    local quoted_tag
+    local tag_args=""
+    for tag in "${BEHAVE_TAGS[@]}"; do
+      printf -v quoted_tag '%q' "$tag"
+      tag_args+=" --tags=${quoted_tag}"
+    done
+    export TEST_BEHAVE_ARGS="${tag_args# }"
   fi
 
   export TEST_RESULTS_DIR="/app/test-results/${SERVER}-${SERVER_VERSION}-${mode}"

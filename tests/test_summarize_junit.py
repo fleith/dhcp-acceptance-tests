@@ -2,7 +2,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from summarize_junit import classify_failures, read_reports
+from summarize_junit import classify_failures, classify_runtime_failure, read_reports
 
 
 REPORT = """\
@@ -46,6 +46,36 @@ class SummarizeJunitTests(unittest.TestCase):
 
         self.assertEqual(expected, [])
         self.assertEqual(unexpected, failures)
+
+    def test_expected_runtime_signature_classifies_missing_junit_failure(self):
+        expected, unexpected = classify_runtime_failure(
+            "failure",
+            [],
+            "Assertion in /usr/include/c++/bits/stl_vector.h failed",
+            ["stl_vector.h"],
+        )
+
+        self.assertEqual(expected, ["stl_vector.h"])
+        self.assertEqual(unexpected, [])
+
+    def test_missing_runtime_signature_keeps_infrastructure_failure_unexpected(self):
+        expected, unexpected = classify_runtime_failure(
+            "failure",
+            [],
+            "docker pull failed",
+            ["stl_vector.h"],
+        )
+
+        self.assertEqual(expected, [])
+        self.assertEqual(unexpected, ["stl_vector.h"])
+
+    def test_failed_run_without_junit_or_runtime_signature_is_unexpected(self):
+        expected, unexpected = classify_runtime_failure(
+            "failure", [], "", []
+        )
+
+        self.assertEqual(expected, [])
+        self.assertEqual(unexpected, ["no classified JUnit scenario failure"])
 
 
 if __name__ == "__main__":

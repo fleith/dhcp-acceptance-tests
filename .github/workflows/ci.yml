@@ -68,42 +68,72 @@ jobs:
             ip_version: v4
             extra_args: ""
             expected_failure_pattern: ""
+            expected_log_pattern: ""
+            artifact_suffix: full
           - name: ISC DHCP 4.4.3-P1 / v6
             server: isc-dhcpd
             server_version: isc-final
             ip_version: v6
             extra_args: ""
             expected_failure_pattern: ""
+            expected_log_pattern: ""
+            artifact_suffix: full
           - name: Kea 3.0.3 LTS / v4
             server: kea
             server_version: kea-lts
             ip_version: v4
             extra_args: ""
             expected_failure_pattern: dhcp_rfc8925_ipv6_only_preferred
+            expected_log_pattern: ""
+            artifact_suffix: full
           - name: Kea 3.0.3 LTS / v6
             server: kea
             server_version: kea-lts
             ip_version: v6
-            extra_args: ""
+            extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_crash"
             expected_failure_pattern: ""
+            expected_log_pattern: ""
+            artifact_suffix: full
+          - name: Kea 3.0.3 LTS / v6 malformed relay robustness
+            server: kea
+            server_version: kea-lts
+            ip_version: v6
+            extra_args: "--tags @kea3_malformed_relay_crash"
+            expected_failure_pattern: dhcpv6_relay
+            expected_log_pattern: stl_vector.h
+            artifact_suffix: malformed-relay
           - name: Kea 3.2.0 stable / v4
             server: kea
             server_version: kea-stable
             ip_version: v4
             extra_args: ""
             expected_failure_pattern: dhcp_rfc8925_ipv6_only_preferred
+            expected_log_pattern: ""
+            artifact_suffix: full
           - name: Kea 3.2.0 stable / v6
             server: kea
             server_version: kea-stable
             ip_version: v6
-            extra_args: ""
+            extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_crash"
             expected_failure_pattern: ""
+            expected_log_pattern: ""
+            artifact_suffix: full
+          - name: Kea 3.2.0 stable / v6 malformed relay robustness
+            server: kea
+            server_version: kea-stable
+            ip_version: v6
+            extra_args: "--tags @kea3_malformed_relay_crash"
+            expected_failure_pattern: dhcpv6_relay
+            expected_log_pattern: stl_vector.h
+            artifact_suffix: malformed-relay
           - name: Kea baseline / known divergences
             server: kea
             server_version: baseline
             ip_version: v6
             extra_args: "--tags @known_divergence"
             expected_failure_pattern: ""
+            expected_log_pattern: ""
+            artifact_suffix: known-divergences
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -111,12 +141,13 @@ jobs:
       - name: Run informational compatibility tests
         id: compatibility-tests
         continue-on-error: ${{ matrix.expected_failure_pattern != '' }}
-        run: >-
-          bash ./run_dhcp_tests.sh
-          --server ${{ matrix.server }}
-          --server-version ${{ matrix.server_version }}
-          --ip-version ${{ matrix.ip_version }}
-          ${{ matrix.extra_args }}
+        run: |
+          set -o pipefail
+          bash ./run_dhcp_tests.sh \
+            --server ${{ matrix.server }} \
+            --server-version ${{ matrix.server_version }} \
+            --ip-version ${{ matrix.ip_version }} \
+            ${{ matrix.extra_args }} 2>&1 | tee compatibility.log
 
       - name: Tear down containers
         if: always()
@@ -130,12 +161,15 @@ jobs:
           --title "Informational / ${{ matrix.name }}"
           --run-outcome "${{ steps.compatibility-tests.outcome }}"
           ${{ matrix.expected_failure_pattern != '' && format('--expected-failure-pattern {0}', matrix.expected_failure_pattern) || '' }}
+          ${{ matrix.expected_log_pattern != '' && format('--log-file compatibility.log --expected-log-pattern {0}', matrix.expected_log_pattern) || '' }}
 
       - name: Upload compatibility JUnit reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: compatibility-${{ matrix.server_version }}-${{ matrix.ip_version }}-${{ github.run_attempt }}
-          path: test-results
+          name: compatibility-${{ matrix.server_version }}-${{ matrix.ip_version }}-${{ matrix.artifact_suffix }}-${{ github.run_attempt }}
+          path: |
+            test-results
+            compatibility.log
           if-no-files-found: warn
           retention-days: 14

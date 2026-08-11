@@ -10,7 +10,7 @@ Feature: DHCPv6 relay-forward and relay-reply handling (RFC 9915)
     When the relay forwards the client DHCPv6 REQUEST
     Then the server returns a matching DHCPv6 RELAY-REPLY with a leased address
 
-  @negative
+  @negative @kea3_malformed_relay_crash
   Scenario: Malformed relay traffic is ignored without poisoning the server
     Given the DHCPv6 server is running
     When a relay sends a RELAY-FORWARD without a Relay Message option
