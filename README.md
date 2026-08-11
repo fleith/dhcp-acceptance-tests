@@ -15,7 +15,8 @@ Behavior-driven acceptance tests for DHCP servers using [Behave](https://behave.
 The recommended entrypoint is the helper script:
 
 ```bash
-bash ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual]
+bash ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual] \
+  [--server-version baseline|isc-final|kea-lts|kea-stable] [--tags TAG_EXPRESSION]
 ```
 
 Examples:
@@ -35,9 +36,28 @@ bash ./run_dhcp_tests.sh --server kea --ip-version v6
 
 # Run both v4 and v6 for one server
 bash ./run_dhcp_tests.sh --server isc-dhcpd --ip-version dual
+
+# Run the current stable Kea compatibility profile
+bash ./run_dhcp_tests.sh --server kea --server-version kea-stable --ip-version dual
+
+# Run explicitly quarantined known-divergence scenarios
+bash ./run_dhcp_tests.sh --server kea --ip-version v6 --tags @known_divergence
 ```
 
 The script composes the correct Docker files and always tears down the stack after each run.
+
+Version profiles keep the required distribution baseline while making upgrade
+compatibility reproducible:
+
+- `baseline`: pinned `networkboot/dhcpd:1.3.0` for ISC DHCP and Debian Bookworm's Kea packages.
+- `isc-final`: Debian Bookworm's ISC DHCP 4.4.3-P1 final release line.
+- `kea-lts`: the official ISC Kea 3.0.3 LTS images.
+- `kea-stable`: the official ISC Kea 3.2.0 current stable images.
+
+The Kea 3.x IPv4 profiles currently expose an RFC 8925 behavior change: option
+108 requests receive an addressless OFFER instead of completing the suite's
+deliberate IPv4 fallback flow. This remains visible in the informational matrix
+without blocking the required baseline jobs.
 
 Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet.
 
@@ -161,3 +181,8 @@ GitHub Actions runs the supported matrix:
 
 - `isc-dhcpd` with `v4` and `v6`
 - `kea` with `v4` and `v6`
+
+These four baseline jobs are required. A separate informational matrix is
+allowed to fail without blocking merges and covers ISC DHCP 4.4.3-P1, Kea
+3.0.3 LTS, Kea 3.2.0 stable, and explicitly tagged known divergences. The full
+workflow also runs every Monday and can be started manually from GitHub.

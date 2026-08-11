@@ -60,6 +60,23 @@ N2_HEX=$(printf '%02x' "$n2")
 N3_HEX=$(printf '%02x' "$n3")
 RFC3442_ROUTES="00:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe:19:c6:33:64:80:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe:18:cb:00:71:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe"
 
+KEA_VERSION=$(kea-dhcp4 -v 2>/dev/null | head -n 1)
+case "$KEA_VERSION" in
+    3.*)
+        RFC3442_OPTION_DEF=""
+        ;;
+    *)
+        RFC3442_OPTION_DEF='    "option-def": [
+      {
+        "name": "classless-static-route",
+        "code": 121,
+        "type": "binary",
+        "space": "dhcp4"
+      }
+    ],'
+        ;;
+esac
+
 mkdir -p /etc/kea /data /run/kea /var/run/kea /var/lib/kea
 
 # RFC 4702: dhcp-ddns.enable-updates lets kea-dhcp4 negotiate and echo the
@@ -77,17 +94,10 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
     },
     "ddns-send-updates": true,
     "ddns-qualifying-suffix": "dhcp-acceptance.test",
-    "option-def": [
-      {
-        "name": "classless-static-route",
-        "code": 121,
-        "type": "binary",
-        "space": "dhcp4"
-      }
-    ],
+$RFC3442_OPTION_DEF
     "lease-database": {
       "type": "memfile",
-      "name": "/data/kea-leases4.csv",
+      "name": "/var/lib/kea/kea-leases4.csv",
       "persist": true
     },
     "renew-timer": 60,
@@ -95,6 +105,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
     "valid-lifetime": 120,
     "subnet4": [
       {
+        "id": 1,
         "subnet": "$NET/$PREFIX",
         "pools": [ { "pool": "${NET3}.100 - ${NET3}.200" } ],
         "option-data": [
@@ -110,6 +121,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
         ]
       },
       {
+        "id": 2,
         "subnet": "$ALT_SUBNET_CIDR",
         "pools": [ { "pool": "${ALT_NET3}.100 - ${ALT_NET3}.200" } ],
         "option-data": [
@@ -130,7 +142,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
 }
 CONF
 
-echo "[kea] interface=$IFACE ip=$IP netmask=$NETMASK network=$NET alt_subnet=$ALT_SUBNET_CIDR"
+echo "[kea] version=$KEA_VERSION interface=$IFACE ip=$IP netmask=$NETMASK network=$NET alt_subnet=$ALT_SUBNET_CIDR"
 echo "[kea] Generated /etc/kea/kea-dhcp4.conf:"
 cat /etc/kea/kea-dhcp4.conf
 

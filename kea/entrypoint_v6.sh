@@ -60,7 +60,7 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
     "ddns-qualifying-suffix": "dhcp-acceptance.test",
     "lease-database": {
       "type": "memfile",
-      "name": "/data/kea-leases6.csv",
+      "name": "/var/lib/kea/kea-leases6.csv",
       "persist": true
     },
     "renew-timer": 60,
@@ -69,6 +69,7 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
     "valid-lifetime": 120,
     "subnet6": [
       {
+        "id": 1,
         "subnet": "$DHCPV6_SUBNET",
         "interface": "$IFACE",
         "pools": [ { "pool": "$DHCPV6_POOL" } ],

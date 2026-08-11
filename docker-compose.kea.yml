@@ -3,6 +3,9 @@ services:
     image: dhcp-test-server-kea:local
     build:
       context: ./kea
+      args:
+        KEA_BASE_IMAGE: ${KEA_BASE_IMAGE:-debian:bookworm-slim}
+        KEA_INSTALL_MODE: ${KEA_INSTALL_MODE:-debian}
     command: ["eth0"]
     healthcheck:
       test: ["CMD-SHELL", "ss -ulpn | grep -q ':67'"]
