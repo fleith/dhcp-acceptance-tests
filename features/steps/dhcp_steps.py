@@ -435,20 +435,41 @@ def step_when_request_wrong_addr(context):
     context_storage['nak_sniffer'] = sniffer
 
 
-@then('the server responds with a DHCPNAK or stays silent')
-@then('the server responds with a DHCPNAK')
-def step_then_receive_nak(context):
+def _matching_request_responses(context):
     xid = context_storage.get('transaction_id')
     sniffer = context_storage.get('nak_sniffer')
     sniffer.join()
     all_dhcp = sniffer.results or []
-    nak_pkts = [
+    return [
         p for p in all_dhcp
         if p.haslayer(DHCP) and p.haslayer(BOOTP)
-        and _get_dhcp_options_dict(p).get('message-type') == 6
         and p[BOOTP].xid == xid
         and _get_dhcp_option(p, 'server_id') == DHCP_SERVER_IP
     ]
+
+
+@then('the server responds with a DHCPNAK')
+def step_then_receive_nak(context):
+    responses = _matching_request_responses(context)
+    nak_pkts = [
+        packet for packet in responses
+        if _get_dhcp_options_dict(packet).get('message-type') == 6
+    ]
+    assert nak_pkts, "No DHCPNAK received for the invalid DHCPREQUEST"
+
+
+@then('the server responds with a DHCPNAK or stays silent')
+def step_then_receive_nak_or_silence(context):
+    responses = _matching_request_responses(context)
+    nak_pkts = [
+        packet for packet in responses
+        if _get_dhcp_options_dict(packet).get('message-type') == 6
+    ]
+    ack_pkts = [
+        packet for packet in responses
+        if _get_dhcp_options_dict(packet).get('message-type') == 5
+    ]
+    assert not ack_pkts, "Server incorrectly ACKed the invalid DHCPREQUEST"
     # Server-specific behavior is acceptable here:
     # - ISC dhcpd (authoritative) typically returns DHCPNAK.
     # - Kea may stay silent for this invalid request shape.

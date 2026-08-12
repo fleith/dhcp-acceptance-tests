@@ -27,7 +27,7 @@ Feature: DHCPv6 relay-forward and relay-reply handling (RFC 9915)
     Then the server returns an ADVERTISE through both original relay layers
     And each RELAY-REPLY layer preserves its Interface-ID
 
-  @negative @kea3_malformed_relay_crash
+  @negative @kea3_malformed_relay_isolated @kea3_missing_relay_message_crash
   Scenario: A missing Relay Message option is ignored without poisoning the server
     Given the DHCPv6 server is running
     When a relay sends a RELAY-FORWARD without a Relay Message option
@@ -35,10 +35,10 @@ Feature: DHCPv6 relay-forward and relay-reply handling (RFC 9915)
     When a relay forwards a client DHCPv6 SOLICIT
     Then the server returns a matching DHCPv6 RELAY-REPLY with an ADVERTISE
 
-  @negative @kea3_malformed_relay_crash
-  Scenario: A truncated relay metadata option is ignored without poisoning the server
+  @negative @kea3_malformed_relay_isolated @kea3_truncated_interface_id
+  Scenario: A truncated relay metadata option is handled without poisoning the server
     Given the DHCPv6 server is running
     When a relay sends a RELAY-FORWARD with a truncated Interface-ID option
-    Then the server does not answer the malformed RELAY-FORWARD
+    Then the server safely ignores the malformed metadata or answers its inner transaction
     When a relay forwards a client DHCPv6 SOLICIT
     Then the server returns a matching DHCPv6 RELAY-REPLY with an ADVERTISE

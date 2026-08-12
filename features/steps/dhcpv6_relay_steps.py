@@ -331,13 +331,39 @@ def step_then_nested_reply_preserves_interface_ids(context):
 @when("a relay sends a RELAY-FORWARD with a truncated Interface-ID option")
 def step_when_relay_sends_truncated_interface_id(context):
     _require_scapy_v6()
-    _, solicit = _client_solicit()
+    trid, solicit = _client_solicit()
     malformed_option = _cls("DHCP6OptUnknown")(
         optcode=18,
         optlen=16,
         data=b"short",
     )
-    relay = _relay_forward()
+    # Keep the mandatory Relay Message intact and place the truncated metadata
+    # after it. This isolates Interface-ID length handling instead of allowing
+    # the declared length to consume the following Relay Message header.
+    relay = _relay_forward(solicit)
     relay /= malformed_option
-    relay /= _cls("DHCP6OptRelayMsg")(message=solicit)
     _send_relay_message(relay, timeout=2)
+    context_storage_v6["malformed_relay_trid"] = trid
+
+
+@then(
+    "the server safely ignores the malformed metadata or answers its inner transaction"
+)
+def step_then_truncated_interface_id_is_safely_handled(context):
+    replies = _relay_replies()
+    if not replies:
+        return
+
+    matches = _matching_relay_reply(
+        "DHCP6_Advertise", context_storage_v6["malformed_relay_trid"]
+    )
+    assert len(matches) == len(replies), (
+        "Malformed Interface-ID produced a RELAY-REPLY that did not contain "
+        "the original inner SOLICIT transaction"
+    )
+    for _, relay_layers, advertise in matches:
+        _assert_relay_path(relay_layers)
+        client_id = advertise.getlayer(_cls("DHCP6OptClientId"))
+        assert _duids_equal(getattr(client_id, "duid", None), _client_duid()), (
+            "Response to malformed Interface-ID changed the inner client identity"
+        )

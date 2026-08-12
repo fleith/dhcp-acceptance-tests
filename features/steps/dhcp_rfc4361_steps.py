@@ -358,7 +358,10 @@ def step_when_client_id_changes_during_dora(context):
         "acks": acknowledgements,
         "discover_id": discover_id,
         "offer": offer_state,
-        "outcome": "nak" if rejections else "ignored",
+        "outcome": (
+            "ack" if acknowledgements else "nak" if rejections else "ignored"
+        ),
+        "rejections": rejections,
         "request_id": request_id,
     }
 
@@ -367,6 +370,10 @@ def step_when_client_id_changes_during_dora(context):
 def step_then_changed_identifier_recovers_without_collapsing(context):
     result = _state(context)["changed_identifier"]
     assert result["discover_id"] != result["request_id"]
+    assert not (result["acks"] and result["rejections"]), (
+        "Server returned both DHCPACK and DHCPNAK after Option 61 changed "
+        "between DISCOVER and REQUEST"
+    )
 
     discover_binding = _dora(
         context,
@@ -380,3 +387,9 @@ def step_then_changed_identifier_recovers_without_collapsing(context):
         "Changing Option 61 during DORA caused two valid RFC 4361 identifiers "
         f"to collapse onto {discover_binding['acknowledged_ip']}"
     )
+    if result["acks"]:
+        changed_request_ip = result["acks"][0][BOOTP].yiaddr
+        assert request_binding["acknowledged_ip"] == changed_request_ip, (
+            "Server ACKed the changed REQUEST but did not preserve that lease "
+            "for the REQUEST client identifier"
+        )
