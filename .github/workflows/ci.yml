@@ -90,18 +90,18 @@ jobs:
             server: kea
             server_version: kea-lts
             ip_version: v6
-            extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_crash"
+            extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_isolated"
             expected_failure_pattern: ""
             expected_log_pattern: ""
             artifact_suffix: full
-          - name: Kea 3.0.3 LTS / v6 malformed relay robustness
+          - name: Kea 3.0.3 LTS / v6 truncated relay Interface-ID
             server: kea
             server_version: kea-lts
             ip_version: v6
-            extra_args: "--tags @kea3_malformed_relay_crash"
-            expected_failure_pattern: dhcpv6_relay
-            expected_log_pattern: stl_vector.h
-            artifact_suffix: malformed-relay
+            extra_args: "--tags @kea3_truncated_interface_id"
+            expected_failure_pattern: ""
+            expected_log_pattern: ""
+            artifact_suffix: truncated-interface-id
           - name: Kea 3.2.0 stable / v4
             server: kea
             server_version: kea-stable
@@ -114,18 +114,18 @@ jobs:
             server: kea
             server_version: kea-stable
             ip_version: v6
-            extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_crash"
+            extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_isolated"
             expected_failure_pattern: ""
             expected_log_pattern: ""
             artifact_suffix: full
-          - name: Kea 3.2.0 stable / v6 malformed relay robustness
+          - name: Kea 3.2.0 stable / v6 truncated relay Interface-ID
             server: kea
             server_version: kea-stable
             ip_version: v6
-            extra_args: "--tags @kea3_malformed_relay_crash"
-            expected_failure_pattern: dhcpv6_relay
-            expected_log_pattern: stl_vector.h
-            artifact_suffix: malformed-relay
+            extra_args: "--tags @kea3_truncated_interface_id"
+            expected_failure_pattern: ""
+            expected_log_pattern: ""
+            artifact_suffix: truncated-interface-id
           - name: Kea baseline / known divergences
             server: kea
             server_version: baseline
