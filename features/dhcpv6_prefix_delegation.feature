@@ -43,10 +43,12 @@ Feature: DHCPv6 Prefix Delegation (RFC 9915)
     When the client solicits a delegated prefix with nonzero T1 and T2
     Then the server replaces the client-supplied IA_PD timers
 
+  @negative
   Scenario: Out-of-pool prefix hint is never granted
     When the client solicits the configured out-of-pool prefix hint
     Then the server does not grant the out-of-pool prefix
 
+  @negative
   Scenario: Forged RELEASE cannot remove another client's binding
     Given the client holds an active delegated prefix
     When a different DUID sends a RELEASE for the delegated prefix
@@ -61,6 +63,7 @@ Feature: DHCPv6 Prefix Delegation (RFC 9915)
     When a different DUID requests the released delegated prefix
     Then the server delegates exactly the released prefix
 
+  @negative
   Scenario: Exhausted prefix pool returns NoPrefixAvail
     Given every configured delegated prefix is bound
     When an additional client solicits a delegated prefix

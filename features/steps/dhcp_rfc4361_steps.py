@@ -6,8 +6,10 @@ from behave import then, when
 
 from dhcpv4_support import (
     BOOTP,
+    DHCP,
     build_client_packet,
     dhcp_option,
+    dhcp_options,
     dhcp_packets,
     require_scapy_v4,
     start_dhcp_sniffer,
@@ -300,13 +302,43 @@ def step_when_truncated_identifier_precedes_valid_dora(context):
     )
     sniffer = start_dhcp_sniffer(INTERFACE)
     _send(malformed_discover)
-    malformed_offers = dhcp_packets(sniffer, 2, xid, DHCP_SERVER_IP)
+    sniffer.join()
+    malformed_responses = _packets_for_mac(
+        [
+            packet
+            for packet in (sniffer.results or [])
+            if packet.haslayer(DHCP)
+            and packet.haslayer(BOOTP)
+            and packet[BOOTP].xid == xid
+            and dhcp_option(packet, "server_id") == DHCP_SERVER_IP
+        ],
+        mac,
+    )
+    malformed_offers = [
+        packet
+        for packet in malformed_responses
+        if dhcp_options(packet).get("message-type") == 2
+    ]
+    malformed_acks = [
+        packet
+        for packet in malformed_responses
+        if dhcp_options(packet).get("message-type") == 5
+    ]
 
     valid_id = _client_identifier(iaid, _new_duid(context))
     context.rfc4361["truncated_outcome"] = (
         "offered" if malformed_offers else "ignored"
     )
+    context.rfc4361["truncated_acks"] = malformed_acks
     context.rfc4361["after_truncated"] = _dora(context, valid_id, mac=mac)
+
+
+@then("the truncated RFC 4361 transaction does not receive a DHCPACK")
+def step_then_truncated_identifier_is_not_committed(context):
+    assert not _state(context)["truncated_acks"], (
+        "Server committed a lease for a Type 255 client identifier containing "
+        "an IAID but no DUID"
+    )
 
 
 @then("the later valid RFC 4361 binding is acknowledged")
