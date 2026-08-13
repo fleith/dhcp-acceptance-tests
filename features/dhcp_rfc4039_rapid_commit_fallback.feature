@@ -14,5 +14,6 @@ Feature: Unsupported RFC 4039 DHCPv4 Rapid Commit fallback safety
 
   Scenario: A malformed Rapid Commit option does not poison the server
     When a client sends malformed nonzero-length DHCPv4 Rapid Commit
-    And the same client completes a subsequent valid DORA
+    Then the malformed Rapid Commit transaction does not receive a DHCPACK
+    When the same client completes a subsequent valid DORA
     Then the valid exchange succeeds after the malformed option

@@ -29,7 +29,8 @@ Feature: RFC 4361 node-specific DHCPv4 client identifiers
   @negative
   Scenario: A truncated Type 255 identifier does not poison a valid client
     When a truncated RFC 4361 identifier is followed by a valid DORA exchange
-    Then the later valid RFC 4361 binding is acknowledged
+    Then the truncated RFC 4361 transaction does not receive a DHCPACK
+    And the later valid RFC 4361 binding is acknowledged
 
   @negative
   Scenario: Client identifier changes during DORA

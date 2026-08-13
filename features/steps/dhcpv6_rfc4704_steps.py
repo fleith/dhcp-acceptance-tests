@@ -1,6 +1,4 @@
 import os
-import time
-
 from behave import then, when
 
 from dhcpv6_support import (
@@ -449,8 +447,46 @@ def step_when_solicit_with_truncated_fqdn(context):
         / _cls("DHCP6OptOptReq")(reqopts=[_FQDN_OPTION_CODE])
         / malformed_fqdn
     )
+    sniffer = _start_v6_sniffer(timeout=2)
     sendp(packet, iface=INTERFACE, verbose=False)
-    time.sleep(0.25)
+    context_storage_v6["rfc4704_malformed_trid"] = trid
+    context_storage_v6["rfc4704_malformed_sniffer"] = sniffer
+
+
+@then("the malformed FQDN transaction does not receive a committed lease")
+def step_then_malformed_fqdn_is_not_committed(context):
+    trid = context_storage_v6["rfc4704_malformed_trid"]
+    sniffer = context_storage_v6["rfc4704_malformed_sniffer"]
+    sniffer.join()
+    packets = list(sniffer.results or [])
+    replies = [
+        packet
+        for packet in packets
+        if packet.haslayer(_cls("DHCP6_Reply"))
+        and getattr(packet[_cls("DHCP6_Reply")], "trid", None) == trid
+    ]
+    committed_replies = [
+        packet
+        for packet in replies
+        if packet.getlayer(_cls("DHCP6OptIAAddress")) is not None
+    ]
+    assert not committed_replies, (
+        "Server committed an IA_NA lease for a SOLICIT containing a truncated "
+        "RFC 4704 FQDN DNS label"
+    )
+
+    advertises = [
+        packet
+        for packet in packets
+        if packet.haslayer(_cls("DHCP6_Advertise"))
+        and getattr(packet[_cls("DHCP6_Advertise")], "trid", None) == trid
+    ]
+    for advertise in advertises:
+        _assert_response_identity(advertise)
+        fqdn = _find_fqdn_option(advertise)
+        if fqdn is not None:
+            _, wire_name = _fqdn_wire_fields(fqdn)
+            _decode_dns_wire_name(wire_name)
 
 
 @when("the client sends a valid RFC 4704 SOLICIT after the malformed FQDN")

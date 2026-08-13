@@ -229,13 +229,22 @@ def step_when_client_sends_malformed_rapid_commit(context):
     state = _state(context)
     mac = _new_mac(context)
     state["malformed_mac"] = mac
-    xid = _new_xid(context)
-    packet = build_client_packet(
-        mac,
-        xid,
-        _client_options("discover", b"\x00"),
+    state["malformed_discovery"] = _discover(context, mac, b"\x00")
+
+
+@then("the malformed Rapid Commit transaction does not receive a DHCPACK")
+def step_then_malformed_rapid_commit_is_not_committed(context):
+    discovery = _state(context)["malformed_discovery"]
+    assert not discovery["acks"], (
+        "Server committed a lease for malformed nonzero-length Rapid Commit "
+        f"transaction 0x{discovery['xid']:08x}"
     )
-    _send_and_capture(packet)
+    assert all(
+        _rapid_commit_option(offer) is None for offer in discovery["offers"]
+    ), (
+        "Server echoed malformed Rapid Commit Option 80 in its fallback "
+        f"DHCPOFFER for transaction 0x{discovery['xid']:08x}"
+    )
 
 
 @when("the same client completes a subsequent valid DORA")

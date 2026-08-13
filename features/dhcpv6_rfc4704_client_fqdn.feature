@@ -40,9 +40,10 @@ Feature: DHCPv6 Client FQDN negotiation (RFC 4704)
     When an RFC 4704 client sends a SOLICIT with a legal S preference
     Then the matching ADVERTISE negotiates RFC 4704 flags according to server policy
 
-  @kea
+  @kea @negative
   Scenario: Server remains responsive after a truncated DNS label
     Given the DHCPv6 server is running
     When an RFC 4704 client sends a SOLICIT with a truncated FQDN DNS label
-    And the client sends a valid RFC 4704 SOLICIT after the malformed FQDN
+    Then the malformed FQDN transaction does not receive a committed lease
+    When the client sends a valid RFC 4704 SOLICIT after the malformed FQDN
     Then the matching ADVERTISE proves RFC 4704 negotiation remains responsive

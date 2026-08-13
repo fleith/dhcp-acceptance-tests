@@ -7,6 +7,7 @@ Feature: RFC 5227 companion IPv4 Address Conflict Detection
   Background:
     Given the DHCP server is running
 
+  @negative
   Scenario: A conflicting address claim causes DHCPDECLINE and a new offer
     When an RFC 5227 companion client completes DORA with a transaction-specific DHCPACK
     And the companion probes while a distinct peer claims the acknowledged address
@@ -15,6 +16,7 @@ Feature: RFC 5227 companion IPv4 Address Conflict Detection
     When the companion sends DHCPDECLINE for the conflicted acknowledged address
     Then the same client receives a different transaction-specific DHCPOFFER
 
+  @negative
   Scenario: A simultaneous probe for the acknowledged address is a conflict
     When an RFC 5227 companion client completes DORA with a transaction-specific DHCPACK
     And the companion probes while a distinct peer probes the acknowledged address

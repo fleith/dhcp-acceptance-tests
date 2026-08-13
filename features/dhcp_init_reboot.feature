@@ -7,6 +7,7 @@ Feature: DHCP INIT-REBOOT state (RFC 2131 §3.2)
     When the client reboots and sends a DHCPREQUEST for its previous address
     Then the server responds with a DHCPACK confirming the address
 
+  @negative
   Scenario: Server sends DHCPNAK when rebooted client requests address outside the server's subnet
     Given a client holds a lease from the DHCP server
     When the client reboots and sends a DHCPREQUEST for an address outside the server's subnet
