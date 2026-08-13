@@ -15,6 +15,9 @@ PREFIX="${IP_PREFIX##*/}"
 ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
 ALT_SERVER_IP="${RFC3011_ALT_SERVER_IP:-}"
 RFC8925_WAIT="${RFC8925_WAIT:-1800}"
+DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
+DHCPV4_POOL_END_OFFSET="${DHCPV4_POOL_END_OFFSET:-200}"
+DHCPV4_ALT_POOL_ENABLED="${DHCPV4_ALT_POOL_ENABLED:-1}"
 
 # Convert prefix length to dotted-decimal netmask
 prefix_to_netmask() {
@@ -63,6 +66,11 @@ if [ -z "$ALT_SERVER_IP" ]; then
 fi
 ALT_ROUTER_IP="${ALT_NET3}.1"
 
+ALT_POOL_RANGE=""
+if [ "$DHCPV4_ALT_POOL_ENABLED" = "1" ]; then
+    ALT_POOL_RANGE="range ${ALT_NET3}.100 ${ALT_NET3}.200;"
+fi
+
 # Give dhcpd a local address on the alternate subnet so it can serve that pool
 # and emit a valid server identifier for RFC 3011 selection tests.
 ip addr add "${ALT_SERVER_IP}/${ALT_PREFIX}" dev "$IFACE" >/dev/null 2>&1 || true
@@ -101,7 +109,7 @@ subnet $NET netmask $NETMASK {
     # Always send broadcast responses so the test-runner's sniffer captures
     # unicast-destined replies even when the client IP is not configured locally.
     always-broadcast on;
-    range ${NET3}.100 ${NET3}.200;
+    range ${NET3}.${DHCPV4_POOL_START_OFFSET} ${NET3}.${DHCPV4_POOL_END_OFFSET};
     option routers ${NET3}.1;
     option subnet-mask $NETMASK;
     option domain-name-servers 8.8.8.8;
@@ -113,7 +121,7 @@ subnet $NET netmask $NETMASK {
 }
 subnet $ALT_NET netmask $NETMASK {
     always-broadcast on;
-    range ${ALT_NET3}.100 ${ALT_NET3}.200;
+    $ALT_POOL_RANGE
     option routers ${ALT_ROUTER_IP};
     option subnet-mask $NETMASK;
     option domain-name-servers 8.8.8.8;
@@ -123,7 +131,7 @@ CONF
 
 touch /data/dhcpd.leases
 
-echo "[dhcpd] interface=$IFACE ip=$IP netmask=$NETMASK network=$NET alt_subnet=$ALT_SUBNET_CIDR alt_server_ip=$ALT_SERVER_IP"
+echo "[dhcpd] interface=$IFACE ip=$IP netmask=$NETMASK network=$NET pool=${NET3}.${DHCPV4_POOL_START_OFFSET}-${NET3}.${DHCPV4_POOL_END_OFFSET} alt_subnet=$ALT_SUBNET_CIDR alt_server_ip=$ALT_SERVER_IP"
 echo "[dhcpd] Generated /data/dhcpd.conf:"
 cat /data/dhcpd.conf
 

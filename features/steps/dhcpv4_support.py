@@ -21,12 +21,13 @@ def client_mac(state, default_mac):
     return state.get("client_mac", default_mac)
 
 
-def start_dhcp_sniffer(interface, timeout=5):
+def start_dhcp_sniffer(interface, timeout=5, stop_filter=None):
     """Capture DHCP packets, including frames for synthetic client MACs."""
     require_scapy_v4()
     sniffer = AsyncSniffer(
         iface=interface,
         lfilter=lambda packet: packet.haslayer(DHCP),
+        stop_filter=stop_filter,
         timeout=timeout,
         promisc=True,
     )
