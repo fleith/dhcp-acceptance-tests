@@ -53,6 +53,24 @@ The script composes the correct Docker files and always tears down the stack aft
 Pool exhaustion is excluded from ordinary runs and must be selected explicitly
 with a bounded pool, as shown above.
 
+Lifecycle and focused qualification checks have dedicated entrypoints:
+
+```bash
+# Persistent leases across graceful restart and SIGKILL recovery
+bash ./run_lifecycle_tests.sh --server kea
+
+# Overlap policy and unavailable lease-store startup behavior
+bash ./run_config_safety_tests.sh --server isc-dhcpd --overlap-policy reject
+
+# Bounded malformed corpus, concurrent deadline, and lease churn
+bash ./run_dhcp_tests.sh --server kea --ip-version v4 --tags @focused_robustness
+```
+
+Optional product capabilities are tagged `@capability` and skipped unless
+explicitly advertised through `TEST_CAPABILITIES`. See
+[`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) for adapter variables and the
+claim boundary.
+
 Version profiles keep the required distribution baseline while making upgrade
 compatibility reproducible:
 
@@ -104,6 +122,11 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `DHCPV4_POOL_END_OFFSET` | `200` | Last /24 host offset in the primary DHCPv4 pool |
 | `DHCPV4_ALT_POOL_ENABLED` | `1` | Set to `0` only in isolated exhaustion runs so the RFC 3011 alternate pool cannot provide fallback capacity |
 | `TEST_DHCPV4_EXHAUSTION_LIMIT` | `16` | Safety limit for an explicitly selected pool-exhaustion run |
+| `TEST_DHCPV4_CONCURRENT_CLIENTS` | `8` | Bounded number of simultaneous DHCPv4 clients (2..32) |
+| `TEST_DHCPV4_BATCH_DEADLINE` | `15` | Maximum seconds for the bounded concurrent batch |
+| `TEST_DHCPV4_CHURN_CYCLES` | `12` | Bounded acquire/release churn cycles (2..64) |
+| `TEST_DHCPV4_FUZZ_CASES` | `24` | Deterministic malformed corpus size (5..128) |
+| `TEST_CAPABILITIES` | empty | Comma-separated optional capabilities to enable |
 
 ## Coverage snapshot
 
@@ -128,6 +151,16 @@ Additional coverage is intentionally excluded from the 12-RFC server count:
 
 - **RFC 5227**: client-companion IPv4 Address Conflict Detection, including conflict, no-conflict, and DHCPDECLINE paths; this is not DHCP server compliance coverage.
 - **RFC 4039**: unsupported DHCPv4 Rapid Commit fallback and malformed-option recovery, tagged as non-compliance coverage; neither backend claims RFC 4039 support.
+
+Beyond the RFC packet flows, the qualification profile now covers duplicate
+transactions, concurrent clients, real `giaddr` relay forwarding with exact
+Option 82 preservation, reservations, client classes, bounded malformed input,
+load deadlines, churn, persistence, crash recovery, and configuration safety.
+Reload, HA, DDNS, a second direct interface, and authenticated DHCPv6
+Reconfigure, plus runtime lease-storage fault injection, have executable
+capability-gated scenarios because they require a product-specific topology or
+control-plane adapter. The machine-readable index is
+[`docs/conformance-profile.json`](docs/conformance-profile.json).
 
 ## Project structure
 
@@ -170,6 +203,11 @@ dhcp-acceptance-tests/
 |   |-- dhcpv6_relay.feature
 |   |-- dhcpv6_release.feature
 |   |-- dhcpv6_rfc4704_client_fqdn.feature
+|   |-- dhcpv4_conformance.feature
+|   |-- dhcpv4_persistence.feature
+|   |-- dhcpv4_relay_conformance.feature
+|   |-- optional_service_capabilities.feature
+|   |-- dhcpv6_optional_capabilities.feature
 |   |-- environment.py
 |   `-- steps/
 |       |-- dhcp_steps.py
@@ -197,6 +235,8 @@ dhcp-acceptance-tests/
 |-- docker-compose.ipv6.yml
 |-- RFC_EXPANSION_PLAN.md
 |-- run_dhcp_tests.sh
+|-- run_lifecycle_tests.sh
+|-- run_config_safety_tests.sh
 |-- run_tests.py
 |-- summarize_junit.py
 |-- tests/test_summarize_junit.py
@@ -217,6 +257,11 @@ divergences. The documented Kea 3.x RFC 8925 difference is reported as a
 warning. The Kea 3.x malformed DHCPv6 relay crash is isolated in dedicated
 robustness rows so it cannot truncate the full IPv6 runs. Unclassified
 compatibility failures still fail their job.
+
+CI also runs bounded focused robustness, lifecycle/crash recovery,
+configuration-safety policy, pool exhaustion, and validation of the coverage
+profile. Capability-gated scenarios remain deployment jobs: a target service
+must supply the advertised capability and its adapter configuration.
 
 Every matrix row writes a Markdown summary and uploads its JUnit reports for 14
 days, including failed runs. The full workflow also runs every Monday and can

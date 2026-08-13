@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "scope": "DHCP service qualification gaps beyond the RFC packet-flow suite",
+  "claim": "Passing required and focused checks supports the behaviors named here; it is not by itself a complete RFC compliance certification.",
+  "coverage": [
+    {
+      "id": "GAP-PERSISTENCE",
+      "title": "Restart and persistent lease recovery",
+      "status": "covered",
+      "mode": "orchestrated",
+      "evidence": [
+        "features/dhcpv4_persistence.feature",
+        "run_lifecycle_tests.sh"
+      ],
+      "tags": ["@persistence_prepare", "@persistence_verify", "@persistence_cleanup"]
+    },
+    {
+      "id": "GAP-IDEMPOTENCY",
+      "title": "Retransmissions, duplicate messages, and transaction idempotency",
+      "status": "covered",
+      "mode": "required",
+      "evidence": ["features/dhcpv4_conformance.feature"],
+      "tags": ["@retransmission"]
+    },
+    {
+      "id": "GAP-CONCURRENCY",
+      "title": "Concurrent client isolation",
+      "status": "covered",
+      "mode": "required",
+      "evidence": ["features/dhcpv4_conformance.feature"],
+      "tags": ["@concurrency"]
+    },
+    {
+      "id": "GAP-V4-RELAY",
+      "title": "Real DHCPv4 relay, giaddr, subnet selection, and Option 82 preservation",
+      "status": "covered",
+      "mode": "required",
+      "evidence": ["features/dhcpv4_relay_conformance.feature"],
+      "tags": ["@relay", "@rfc3046"]
+    },
+    {
+      "id": "GAP-POLICY",
+      "title": "Reservations, client classes, and multiple served subnets",
+      "status": "covered",
+      "mode": "required",
+      "evidence": [
+        "features/dhcpv4_conformance.feature",
+        "features/dhcpv4_relay_conformance.feature"
+      ],
+      "tags": ["@reservation", "@client_class", "@relay"]
+    },
+    {
+      "id": "GAP-CONFIG-SAFETY",
+      "title": "Overlapping configuration policy and fail-closed storage configuration",
+      "status": "covered",
+      "mode": "orchestrated",
+      "evidence": ["run_config_safety_tests.sh"],
+      "tags": []
+    },
+    {
+      "id": "GAP-RELOAD",
+      "title": "Configuration reload without losing active bindings",
+      "status": "conditional",
+      "mode": "capability",
+      "evidence": ["features/optional_service_capabilities.feature"],
+      "tags": ["@requires_reload"]
+    },
+    {
+      "id": "GAP-MALFORMED",
+      "title": "Malformed packet corpus and bounded deterministic fuzzing",
+      "status": "partial",
+      "mode": "focused",
+      "evidence": ["features/dhcpv4_conformance.feature"],
+      "tags": ["@malformed", "@bounded_fuzz", "@focused_robustness"]
+    },
+    {
+      "id": "GAP-CAPACITY",
+      "title": "Pool exhaustion, bounded load, deadline, and lease churn",
+      "status": "partial",
+      "mode": "focused",
+      "evidence": [
+        "features/dhcp_address_pool.feature",
+        "features/dhcpv4_conformance.feature"
+      ],
+      "tags": ["@pool_exhaustion", "@load", "@churn"]
+    },
+    {
+      "id": "GAP-CRASH-CONSISTENCY",
+      "title": "Abrupt process termination and binding recovery",
+      "status": "covered",
+      "mode": "orchestrated",
+      "evidence": [
+        "features/dhcpv4_persistence.feature",
+        "run_lifecycle_tests.sh"
+      ],
+      "tags": ["@persistence_verify"]
+    },
+    {
+      "id": "GAP-RUNTIME-STORAGE",
+      "title": "Runtime lease-storage failure and recovery",
+      "status": "conditional",
+      "mode": "capability",
+      "evidence": ["features/optional_service_capabilities.feature"],
+      "tags": ["@requires_storage_fault"]
+    },
+    {
+      "id": "GAP-HA",
+      "title": "HA or failover binding continuity",
+      "status": "conditional",
+      "mode": "capability",
+      "evidence": ["features/optional_service_capabilities.feature"],
+      "tags": ["@requires_ha"]
+    },
+    {
+      "id": "GAP-DDNS",
+      "title": "Dynamic DNS forward update after lease commit",
+      "status": "conditional",
+      "mode": "capability",
+      "evidence": ["features/optional_service_capabilities.feature"],
+      "tags": ["@requires_ddns"]
+    },
+    {
+      "id": "GAP-MULTI-INTERFACE",
+      "title": "Direct client traffic on a second interface and subnet",
+      "status": "conditional",
+      "mode": "capability",
+      "evidence": ["features/optional_service_capabilities.feature"],
+      "tags": ["@requires_multi_interface"]
+    },
+    {
+      "id": "GAP-AUTH-RECONFIGURE",
+      "title": "Authenticated server-initiated DHCPv6 Reconfigure",
+      "status": "conditional",
+      "mode": "capability",
+      "evidence": ["features/dhcpv6_optional_capabilities.feature"],
+      "tags": ["@requires_authenticated_reconfigure"]
+    },
+    {
+      "id": "GAP-RFC-TRACEABILITY",
+      "title": "Requirement-level mapping of applicable RFC MUST and SHOULD statements",
+      "status": "partial",
+      "mode": "documentation",
+      "evidence": ["docs/CONFORMANCE.md"],
+      "tags": []
+    }
+  ]
+}
