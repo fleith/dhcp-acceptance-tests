@@ -54,6 +54,50 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  pool-exhaustion:
+    name: Required / ${{ matrix.server }} / v4 pool exhaustion
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        server: [isc-dhcpd, kea]
+    env:
+      DHCPV4_POOL_START_OFFSET: "190"
+      DHCPV4_POOL_END_OFFSET: "193"
+      DHCPV4_ALT_POOL_ENABLED: "0"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Exhaust and recover the bounded DHCPv4 pool
+        id: pool-tests
+        run: >-
+          bash ./run_dhcp_tests.sh
+          --server ${{ matrix.server }}
+          --ip-version v4
+          --tags @pool_exhaustion
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down
+
+      - name: Publish pool-exhaustion summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Required / ${{ matrix.server }} / v4 pool exhaustion"
+          --run-outcome "${{ steps.pool-tests.outcome }}"
+
+      - name: Upload pool-exhaustion JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pool-exhaustion-${{ matrix.server }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   compatibility:
     name: Informational / ${{ matrix.name }}
     runs-on: ubuntu-latest

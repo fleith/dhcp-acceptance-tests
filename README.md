@@ -42,9 +42,16 @@ bash ./run_dhcp_tests.sh --server kea --server-version kea-stable --ip-version d
 
 # Run explicitly quarantined known-divergence scenarios
 bash ./run_dhcp_tests.sh --server kea --ip-version v6 --tags @known_divergence
+
+# Exhaust a dedicated four-address DHCPv4 pool and verify release recovery
+DHCPV4_POOL_START_OFFSET=190 DHCPV4_POOL_END_OFFSET=193 \
+  DHCPV4_ALT_POOL_ENABLED=0 \
+  bash ./run_dhcp_tests.sh --server kea --ip-version v4 --tags @pool_exhaustion
 ```
 
 The script composes the correct Docker files and always tears down the stack after each run.
+Pool exhaustion is excluded from ordinary runs and must be selected explicitly
+with a bounded pool, as shown above.
 
 Version profiles keep the required distribution baseline while making upgrade
 compatibility reproducible:
@@ -93,6 +100,10 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_LEASE_TIME` | `120` | Lease duration in seconds |
 | `TEST_CLIENT_MAC` | `02:00:00:00:00:01` | Fallback DHCPv4 client MAC |
 | `TEST_RESULTS_DIR` | `/app/test-results/default` | JUnit report directory inside the test runner |
+| `DHCPV4_POOL_START_OFFSET` | `100` | First /24 host offset in the primary DHCPv4 pool |
+| `DHCPV4_POOL_END_OFFSET` | `200` | Last /24 host offset in the primary DHCPv4 pool |
+| `DHCPV4_ALT_POOL_ENABLED` | `1` | Set to `0` only in isolated exhaustion runs so the RFC 3011 alternate pool cannot provide fallback capacity |
+| `TEST_DHCPV4_EXHAUSTION_LIMIT` | `16` | Safety limit for an explicitly selected pool-exhaustion run |
 
 ## Coverage snapshot
 
@@ -100,6 +111,7 @@ Server-focused coverage spans 12 RFCs: the existing eight plus RFC 3442,
 RFC 4361, RFC 4704, and RFC 8925.
 
 - **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM, NAK/DECLINE handling.
+- **RFC 2131 pool capacity**: a dedicated bounded run exhausts the DHCPv4 pool, verifies that an additional client receives no offer, releases one lease, and proves the waiting client can acquire that address.
 - **RFC 2132**: required network options and T1/T2 lease timer validation.
 - **RFC 3011**: Subnet Selection Option (option 118) acceptance on ISC and Kea, plus alternate-subnet selection path on Kea in the multi-subnet Docker topology.
 - **RFC 3046**: relay-agent-information (Option 82) request acceptance path.
@@ -162,6 +174,7 @@ dhcp-acceptance-tests/
 |   `-- steps/
 |       |-- dhcp_steps.py
 |       |-- dhcpv4_support.py
+|       |-- dhcp_pool_exhaustion_steps.py
 |       |-- dhcp_rfc3442_steps.py
 |       |-- dhcp_rfc4039_steps.py
 |       |-- dhcp_rfc4361_steps.py

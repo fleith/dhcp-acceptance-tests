@@ -13,6 +13,9 @@ IP="${IP_PREFIX%%/*}"
 PREFIX="${IP_PREFIX##*/}"
 ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
 RFC8925_WAIT="${RFC8925_WAIT:-1800}"
+DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
+DHCPV4_POOL_END_OFFSET="${DHCPV4_POOL_END_OFFSET:-200}"
+DHCPV4_ALT_POOL_ENABLED="${DHCPV4_ALT_POOL_ENABLED:-1}"
 
 prefix_to_netmask() {
     _p=$1
@@ -54,6 +57,11 @@ fi
 ALT_NET="${ALT_SUBNET_CIDR%%/*}"
 ALT_NET3="$(echo "$ALT_NET" | cut -d. -f1-3)"
 ALT_ROUTER_IP="${ALT_NET3}.1"
+
+ALT_POOLS='[]'
+if [ "$DHCPV4_ALT_POOL_ENABLED" = "1" ]; then
+    ALT_POOLS="[ { \"pool\": \"${ALT_NET3}.100 - ${ALT_NET3}.200\" } ]"
+fi
 
 N1_HEX=$(printf '%02x' "$n1")
 N2_HEX=$(printf '%02x' "$n2")
@@ -107,7 +115,7 @@ $RFC3442_OPTION_DEF
       {
         "id": 1,
         "subnet": "$NET/$PREFIX",
-        "pools": [ { "pool": "${NET3}.100 - ${NET3}.200" } ],
+        "pools": [ { "pool": "${NET3}.${DHCPV4_POOL_START_OFFSET} - ${NET3}.${DHCPV4_POOL_END_OFFSET}" } ],
         "option-data": [
           { "name": "routers", "data": "${NET3}.1" },
           { "name": "subnet-mask", "data": "$NETMASK" },
@@ -123,7 +131,7 @@ $RFC3442_OPTION_DEF
       {
         "id": 2,
         "subnet": "$ALT_SUBNET_CIDR",
-        "pools": [ { "pool": "${ALT_NET3}.100 - ${ALT_NET3}.200" } ],
+        "pools": $ALT_POOLS,
         "option-data": [
           { "name": "routers", "data": "${ALT_ROUTER_IP}" },
           { "name": "subnet-mask", "data": "$NETMASK" },
@@ -142,7 +150,7 @@ $RFC3442_OPTION_DEF
 }
 CONF
 
-echo "[kea] version=$KEA_VERSION interface=$IFACE ip=$IP netmask=$NETMASK network=$NET alt_subnet=$ALT_SUBNET_CIDR"
+echo "[kea] version=$KEA_VERSION interface=$IFACE ip=$IP netmask=$NETMASK network=$NET pool=${NET3}.${DHCPV4_POOL_START_OFFSET}-${NET3}.${DHCPV4_POOL_END_OFFSET} alt_subnet=$ALT_SUBNET_CIDR"
 echo "[kea] Generated /etc/kea/kea-dhcp4.conf:"
 cat /etc/kea/kea-dhcp4.conf
 

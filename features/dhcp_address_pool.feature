@@ -8,3 +8,11 @@ Feature: DHCP address pool behaviour (RFC 2131 §4.1)
     When a client sends a DHCPDISCOVER message
     Then the client receives a DHCPOFFER with a reusable IP address from the pool
     And a DHCPACK finalizes the lease
+
+  @negative @pool_exhaustion
+  Scenario: A released address restores capacity to an exhausted pool
+    Given every configured DHCPv4 pool address is leased
+    When an additional DHCPv4 client requests a lease
+    Then the exhausted DHCPv4 pool offers no address
+    When one DHCPv4 pool lease is released
+    Then the waiting DHCPv4 client acquires the released address
