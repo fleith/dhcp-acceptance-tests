@@ -98,6 +98,109 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  focused-robustness:
+    name: Focused robustness / ${{ matrix.server }} / v4
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        server: [isc-dhcpd, kea]
+    env:
+      TEST_DHCPV4_CONCURRENT_CLIENTS: "24"
+      TEST_DHCPV4_BATCH_DEADLINE: "20"
+      TEST_DHCPV4_CHURN_CYCLES: "24"
+      TEST_DHCPV4_FUZZ_CASES: "32"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run bounded malformed, load, and churn checks
+        id: robustness-tests
+        run: >-
+          bash ./run_dhcp_tests.sh
+          --server ${{ matrix.server }}
+          --ip-version v4
+          --tags @focused_robustness
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down
+
+      - name: Publish focused-robustness summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Focused robustness / ${{ matrix.server }} / v4"
+          --run-outcome "${{ steps.robustness-tests.outcome }}"
+
+      - name: Upload focused-robustness JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-robustness-${{ matrix.server }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
+  lifecycle-safety:
+    name: Lifecycle and safety / ${{ matrix.server }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - server: isc-dhcpd
+            overlap_policy: reject
+          - server: kea
+            overlap_policy: allow
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify graceful and abrupt restart recovery
+        id: lifecycle-tests
+        run: bash ./run_lifecycle_tests.sh --server ${{ matrix.server }}
+
+      - name: Verify configuration safety policy
+        id: safety-tests
+        if: always()
+        run: >-
+          bash ./run_config_safety_tests.sh
+          --server ${{ matrix.server }}
+          --overlap-policy ${{ matrix.overlap_policy }}
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down
+
+      - name: Publish lifecycle summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Lifecycle and safety / ${{ matrix.server }}"
+          --run-outcome "${{ steps.lifecycle-tests.outcome }}"
+
+      - name: Upload lifecycle JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-safety-${{ matrix.server }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
+  profile-validation:
+    name: Validate conformance profile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate coverage evidence and test tooling
+        run: python3 -m unittest discover -s tests
+
   compatibility:
     name: Informational / ${{ matrix.name }}
     runs-on: ubuntu-latest

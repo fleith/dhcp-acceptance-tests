@@ -32,6 +32,14 @@ def _server_impl():
     return os.getenv('TEST_SERVER_IMPL', 'isc-dhcpd').strip().lower()
 
 
+def _capabilities():
+    return {
+        value.strip().lower()
+        for value in os.getenv('TEST_CAPABILITIES', '').split(',')
+        if value.strip()
+    }
+
+
 def before_scenario(context, scenario):
     """Reset shared state and assign a fresh client MAC before each scenario.
 
@@ -44,6 +52,21 @@ def before_scenario(context, scenario):
         return
     if 'isc' in scenario.tags and server_impl not in ('isc', 'isc-dhcpd'):
         scenario.skip(f"Scenario requires ISC DHCP backend; current backend is {server_impl}.")
+        return
+
+    capabilities = _capabilities()
+    scenario_tags = getattr(scenario, 'effective_tags', scenario.tags)
+    required_capabilities = {
+        tag.removeprefix('requires_').lower()
+        for tag in scenario_tags
+        if tag.startswith('requires_')
+    }
+    missing = required_capabilities - capabilities
+    if missing:
+        scenario.skip(
+            "Scenario requires explicitly enabled service capabilities: "
+            + ", ".join(sorted(missing))
+        )
         return
 
     for steps in _steps_modules():

@@ -50,6 +50,21 @@ def explicitly_requests_pool_exhaustion(args):
     return any('@pool_exhaustion' in arg for arg in args)
 
 
+def explicitly_requests_orchestrated(args):
+    return any(
+        '@orchestrated' in arg or '@persistence_' in arg
+        for arg in args
+    )
+
+
+def explicitly_requests_focused_robustness(args):
+    return any('@focused_robustness' in arg for arg in args)
+
+
+def explicitly_requests_capabilities(args):
+    return any('@capability' in arg or '@requires_' in arg for arg in args)
+
+
 iface = os.getenv('TEST_INTERFACE', 'eth0')
 ip_version = os.getenv('TEST_IP_VERSION', 'v4').strip().lower()
 
@@ -88,6 +103,15 @@ if not explicitly_requests_known_divergence(behave_args):
 
 if not explicitly_requests_pool_exhaustion(behave_args):
     behave_args = ['--tags=~@pool_exhaustion'] + behave_args
+
+if not explicitly_requests_orchestrated(behave_args):
+    behave_args = ['--tags=~@orchestrated'] + behave_args
+
+if not explicitly_requests_focused_robustness(behave_args):
+    behave_args = ['--tags=~@focused_robustness'] + behave_args
+
+if not explicitly_requests_capabilities(behave_args):
+    behave_args = ['--tags=~@capability'] + behave_args
 
 results_dir = os.getenv('TEST_RESULTS_DIR', '/app/test-results/default')
 shutil.rmtree(results_dir, ignore_errors=True)

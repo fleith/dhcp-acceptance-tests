@@ -16,6 +16,12 @@ RFC8925_WAIT="${RFC8925_WAIT:-1800}"
 DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
 DHCPV4_POOL_END_OFFSET="${DHCPV4_POOL_END_OFFSET:-200}"
 DHCPV4_ALT_POOL_ENABLED="${DHCPV4_ALT_POOL_ENABLED:-1}"
+DHCPV4_RESERVED_MAC="${DHCPV4_RESERVED_MAC:-02:00:00:ff:00:01}"
+DHCPV4_RESERVED_OFFSET="${DHCPV4_RESERVED_OFFSET:-50}"
+DHCPV4_CLASS_NAME="${DHCPV4_CLASS_NAME:-acceptance-class}"
+DHCPV4_RELAY_SUBNET="${DHCPV4_RELAY_SUBNET:-172.29.2.0/24}"
+DHCPV4_INJECT_OVERLAPPING_SUBNET="${DHCPV4_INJECT_OVERLAPPING_SUBNET:-0}"
+DHCPV4_FORCE_STORAGE_FAILURE="${DHCPV4_FORCE_STORAGE_FAILURE:-0}"
 
 prefix_to_netmask() {
     _p=$1
@@ -57,6 +63,20 @@ fi
 ALT_NET="${ALT_SUBNET_CIDR%%/*}"
 ALT_NET3="$(echo "$ALT_NET" | cut -d. -f1-3)"
 ALT_ROUTER_IP="${ALT_NET3}.1"
+RELAY_NET="${DHCPV4_RELAY_SUBNET%%/*}"
+RELAY_NET3="$(echo "$RELAY_NET" | cut -d. -f1-3)"
+
+ip route add "$DHCPV4_RELAY_SUBNET" dev "$IFACE" >/dev/null 2>&1 || true
+
+OVERLAP_SUBNET_JSON=""
+if [ "$DHCPV4_INJECT_OVERLAPPING_SUBNET" = "1" ]; then
+    OVERLAP_SUBNET_JSON=", { \"id\": 4, \"subnet\": \"$NET/25\", \"pools\": [ { \"pool\": \"${NET3}.10 - ${NET3}.20\" } ] }"
+fi
+
+LEASE_FILE=/var/lib/kea/kea-leases4.csv
+if [ "$DHCPV4_FORCE_STORAGE_FAILURE" = "1" ]; then
+    LEASE_FILE=/proc/kea-acceptance-leases.csv
+fi
 
 ALT_POOLS='[]'
 if [ "$DHCPV4_ALT_POOL_ENABLED" = "1" ]; then
@@ -86,6 +106,10 @@ case "$KEA_VERSION" in
 esac
 
 mkdir -p /etc/kea /data /run/kea /var/run/kea /var/lib/kea
+# A container may be restarted after SIGKILL with the old PID file still on
+# its writable layer. PID 1 is then the entrypoint itself, so Kea otherwise
+# mistakes the stale file for a running daemon and refuses crash recovery.
+rm -f /run/kea/*.pid /var/run/kea/*.pid
 
 # RFC 4702: dhcp-ddns.enable-updates lets kea-dhcp4 negotiate and echo the
 # Client FQDN option (81).  kea-dhcp-ddns (D2) is intentionally not started --
@@ -103,9 +127,18 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
     "ddns-send-updates": true,
     "ddns-qualifying-suffix": "dhcp-acceptance.test",
 $RFC3442_OPTION_DEF
+    "client-classes": [
+      {
+        "name": "acceptance-class",
+        "test": "option[60].text == '$DHCPV4_CLASS_NAME'",
+        "option-data": [
+          { "name": "domain-name", "data": "class.acceptance.test" }
+        ]
+      }
+    ],
     "lease-database": {
       "type": "memfile",
-      "name": "/var/lib/kea/kea-leases4.csv",
+      "name": "$LEASE_FILE",
       "persist": true
     },
     "renew-timer": 60,
@@ -115,6 +148,13 @@ $RFC3442_OPTION_DEF
       {
         "id": 1,
         "subnet": "$NET/$PREFIX",
+        "reservations-out-of-pool": true,
+        "reservations": [
+          {
+            "hw-address": "$DHCPV4_RESERVED_MAC",
+            "ip-address": "${NET3}.${DHCPV4_RESERVED_OFFSET}"
+          }
+        ],
         "pools": [ { "pool": "${NET3}.${DHCPV4_POOL_START_OFFSET} - ${NET3}.${DHCPV4_POOL_END_OFFSET}" } ],
         "option-data": [
           { "name": "routers", "data": "${NET3}.1" },
@@ -137,7 +177,16 @@ $RFC3442_OPTION_DEF
           { "name": "subnet-mask", "data": "$NETMASK" },
           { "name": "domain-name-servers", "data": "8.8.8.8" }
         ]
-      }
+      },
+      {
+        "id": 3,
+        "subnet": "$DHCPV4_RELAY_SUBNET",
+        "pools": [ { "pool": "${RELAY_NET3}.100 - ${RELAY_NET3}.120" } ],
+        "option-data": [
+          { "name": "routers", "data": "${RELAY_NET3}.1" },
+          { "name": "domain-name-servers", "data": "8.8.8.8" }
+        ]
+      }$OVERLAP_SUBNET_JSON
     ],
     "loggers": [
       {

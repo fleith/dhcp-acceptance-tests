@@ -18,6 +18,12 @@ RFC8925_WAIT="${RFC8925_WAIT:-1800}"
 DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
 DHCPV4_POOL_END_OFFSET="${DHCPV4_POOL_END_OFFSET:-200}"
 DHCPV4_ALT_POOL_ENABLED="${DHCPV4_ALT_POOL_ENABLED:-1}"
+DHCPV4_RESERVED_MAC="${DHCPV4_RESERVED_MAC:-02:00:00:ff:00:01}"
+DHCPV4_RESERVED_OFFSET="${DHCPV4_RESERVED_OFFSET:-50}"
+DHCPV4_CLASS_NAME="${DHCPV4_CLASS_NAME:-acceptance-class}"
+DHCPV4_RELAY_SUBNET="${DHCPV4_RELAY_SUBNET:-172.29.2.0/24}"
+DHCPV4_INJECT_OVERLAPPING_SUBNET="${DHCPV4_INJECT_OVERLAPPING_SUBNET:-0}"
+DHCPV4_FORCE_STORAGE_FAILURE="${DHCPV4_FORCE_STORAGE_FAILURE:-0}"
 
 # Convert prefix length to dotted-decimal netmask
 prefix_to_netmask() {
@@ -65,6 +71,23 @@ if [ -z "$ALT_SERVER_IP" ]; then
     ALT_SERVER_IP="${ALT_NET3}.2"
 fi
 ALT_ROUTER_IP="${ALT_NET3}.1"
+RELAY_NET="${DHCPV4_RELAY_SUBNET%%/*}"
+RELAY_PREFIX="${DHCPV4_RELAY_SUBNET##*/}"
+RELAY_NET3="$(echo "$RELAY_NET" | cut -d. -f1-3)"
+
+# The relay subnet is remote: install only a route so replies to giaddr leave
+# through the Docker test interface without making it a directly served link.
+ip route add "$DHCPV4_RELAY_SUBNET" dev "$IFACE" >/dev/null 2>&1 || true
+
+OVERLAP_SUBNET_DECL=""
+if [ "$DHCPV4_INJECT_OVERLAPPING_SUBNET" = "1" ]; then
+    OVERLAP_SUBNET_DECL="subnet $NET netmask 255.255.255.128 { range ${NET3}.10 ${NET3}.20; }"
+fi
+
+LEASE_FILE=/data/dhcpd.leases
+if [ "$DHCPV4_FORCE_STORAGE_FAILURE" = "1" ]; then
+    LEASE_FILE=/proc/dhcpd-acceptance-leases
+fi
 
 ALT_POOL_RANGE=""
 if [ "$DHCPV4_ALT_POOL_ENABLED" = "1" ]; then
@@ -94,6 +117,16 @@ option dhcp-rebinding-time 105;
 # RFC 3442 and RFC 8925 options are scoped to the primary test subnet below.
 option classless-static-routes code 121 = array of unsigned integer 8;
 option v6-only-preferred code 108 = unsigned integer 32;
+
+class "acceptance-class" {
+    match if option vendor-class-identifier = "$DHCPV4_CLASS_NAME";
+    option domain-name "class.acceptance.test";
+}
+
+host acceptance-reserved {
+    hardware ethernet $DHCPV4_RESERVED_MAC;
+    fixed-address ${NET3}.${DHCPV4_RESERVED_OFFSET};
+}
 
 # RFC 4702: enable DDNS so dhcpd negotiates the Client FQDN option (81) and
 # echoes it back in the OFFER/ACK.  The .test TLD (RFC 6761) keeps any actual
@@ -127,12 +160,20 @@ subnet $ALT_NET netmask $NETMASK {
     option domain-name-servers 8.8.8.8;
 }
 }
+
+subnet $RELAY_NET netmask $(prefix_to_netmask "$RELAY_PREFIX") {
+    range ${RELAY_NET3}.100 ${RELAY_NET3}.120;
+    option routers ${RELAY_NET3}.1;
+    option subnet-mask $(prefix_to_netmask "$RELAY_PREFIX");
+    option domain-name-servers 8.8.8.8;
+}
+$OVERLAP_SUBNET_DECL
 CONF
 
-touch /data/dhcpd.leases
+touch "$LEASE_FILE"
 
 echo "[dhcpd] interface=$IFACE ip=$IP netmask=$NETMASK network=$NET pool=${NET3}.${DHCPV4_POOL_START_OFFSET}-${NET3}.${DHCPV4_POOL_END_OFFSET} alt_subnet=$ALT_SUBNET_CIDR alt_server_ip=$ALT_SERVER_IP"
 echo "[dhcpd] Generated /data/dhcpd.conf:"
 cat /data/dhcpd.conf
 
-exec dhcpd -f -cf /data/dhcpd.conf -lf /data/dhcpd.leases "$IFACE"
+exec dhcpd -f -cf /data/dhcpd.conf -lf "$LEASE_FILE" "$IFACE"

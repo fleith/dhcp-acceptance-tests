@@ -47,6 +47,7 @@ if ! link_local_ready; then
 fi
 
 mkdir -p /etc/kea /data /run/kea /var/run/kea /var/lib/kea
+rm -f /run/kea/*.pid /var/run/kea/*.pid
 cat > /etc/kea/kea-dhcp6.conf << CONF
 {
   "Dhcp6": {
