@@ -64,6 +64,10 @@ bash ./run_config_safety_tests.sh --server isc-dhcpd --overlap-policy reject
 
 # Bounded malformed corpus, concurrent deadline, and lease churn
 bash ./run_dhcp_tests.sh --server kea --ip-version v4 --tags @focused_robustness
+
+# RFC 2131 server ping-check: silent candidate and responding candidate
+bash ./run_ping_check_tests.sh --server isc-dhcpd
+bash ./run_ping_check_tests.sh --server kea  # defaults to Kea 3.2
 ```
 
 Optional product capabilities are tagged `@capability` and skipped unless
@@ -126,6 +130,7 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_BATCH_DEADLINE` | `15` | Maximum seconds for the bounded concurrent batch |
 | `TEST_DHCPV4_CHURN_CYCLES` | `12` | Bounded acquire/release churn cycles (2..64) |
 | `TEST_DHCPV4_FUZZ_CASES` | `24` | Deterministic malformed corpus size (5..128) |
+| `TEST_DHCPV4_PING_CHECK_ADDRESS` | empty | Candidate address used only by the isolated server ping-check runner |
 | `TEST_CAPABILITIES` | empty | Comma-separated optional capabilities to enable |
 
 ## Coverage snapshot
@@ -133,7 +138,7 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 Server-focused coverage spans 12 RFCs: the existing eight plus RFC 3442,
 RFC 4361, RFC 4704, and RFC 8925.
 
-- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM, NAK/DECLINE handling.
+- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM, NAK/DECLINE handling, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate.
 - **RFC 2131 pool capacity**: a dedicated bounded run exhausts the DHCPv4 pool, verifies that an additional client receives no offer, releases one lease, and proves the waiting client can acquire that address.
 - **RFC 2132**: required network options and T1/T2 lease timer validation.
 - **RFC 3011**: Subnet Selection Option (option 118) acceptance on ISC and Kea, plus alternate-subnet selection path on Kea in the multi-subnet Docker topology.
@@ -183,6 +188,7 @@ dhcp-acceptance-tests/
 |   |-- dhcp_inform.feature
 |   |-- dhcp_address_pool.feature
 |   |-- dhcp_rfc3011_subnet_selection.feature
+|   |-- dhcp_rfc2131_server_ping_check.feature
 |   |-- dhcp_rfc3046_relay_agent.feature
 |   |-- dhcp_rfc3396_option_concat.feature
 |   |-- dhcp_rfc3442_classless_routes.feature
@@ -213,6 +219,7 @@ dhcp-acceptance-tests/
 |       |-- dhcp_steps.py
 |       |-- dhcpv4_support.py
 |       |-- dhcp_pool_exhaustion_steps.py
+|       |-- dhcp_ping_check_steps.py
 |       |-- dhcp_rfc3442_steps.py
 |       |-- dhcp_rfc4039_steps.py
 |       |-- dhcp_rfc4361_steps.py
@@ -237,6 +244,7 @@ dhcp-acceptance-tests/
 |-- run_dhcp_tests.sh
 |-- run_lifecycle_tests.sh
 |-- run_config_safety_tests.sh
+|-- run_ping_check_tests.sh
 |-- run_tests.py
 |-- summarize_junit.py
 |-- tests/test_summarize_junit.py
@@ -259,9 +267,10 @@ robustness rows so it cannot truncate the full IPv6 runs. Unclassified
 compatibility failures still fail their job.
 
 CI also runs bounded focused robustness, lifecycle/crash recovery,
-configuration-safety policy, pool exhaustion, and validation of the coverage
-profile. Capability-gated scenarios remain deployment jobs: a target service
-must supply the advertised capability and its adapter configuration.
+configuration-safety policy, pool exhaustion, RFC 2131 server ping-check on
+ISC DHCP and Kea 3.2, and validation of the coverage profile. Other
+capability-gated scenarios remain deployment jobs: a target service must
+supply the advertised capability and its adapter configuration.
 
 Every matrix row writes a Markdown summary and uploads its JUnit reports for 14
 days, including failed runs. The full workflow also runs every Monday and can

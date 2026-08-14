@@ -47,6 +47,7 @@ class ConformanceProfileTests(unittest.TestCase):
         required_ids = {
             "GAP-PERSISTENCE",
             "GAP-IDEMPOTENCY",
+            "GAP-SERVER-PING-CHECK",
             "GAP-CONCURRENCY",
             "GAP-V4-RELAY",
             "GAP-POLICY",

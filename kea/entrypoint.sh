@@ -22,6 +22,10 @@ DHCPV4_CLASS_NAME="${DHCPV4_CLASS_NAME:-acceptance-class}"
 DHCPV4_RELAY_SUBNET="${DHCPV4_RELAY_SUBNET:-172.29.2.0/24}"
 DHCPV4_INJECT_OVERLAPPING_SUBNET="${DHCPV4_INJECT_OVERLAPPING_SUBNET:-0}"
 DHCPV4_FORCE_STORAGE_FAILURE="${DHCPV4_FORCE_STORAGE_FAILURE:-0}"
+DHCPV4_PING_CHECK_ENABLED="${DHCPV4_PING_CHECK_ENABLED:-0}"
+DHCPV4_PING_TIMEOUT_MS="${DHCPV4_PING_TIMEOUT_MS:-300}"
+DHCPV4_PING_CHECK_ADDRESS="${DHCPV4_PING_CHECK_ADDRESS:-}"
+DHCPV4_PING_CHECK_PEER_MAC="${DHCPV4_PING_CHECK_PEER_MAC:-02:42:ac:1d:00:03}"
 
 prefix_to_netmask() {
     _p=$1
@@ -67,6 +71,10 @@ RELAY_NET="${DHCPV4_RELAY_SUBNET%%/*}"
 RELAY_NET3="$(echo "$RELAY_NET" | cut -d. -f1-3)"
 
 ip route add "$DHCPV4_RELAY_SUBNET" dev "$IFACE" >/dev/null 2>&1 || true
+if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ] && [ -n "$DHCPV4_PING_CHECK_ADDRESS" ]; then
+    ip neigh replace "$DHCPV4_PING_CHECK_ADDRESS" \
+        lladdr "$DHCPV4_PING_CHECK_PEER_MAC" nud permanent dev "$IFACE"
+fi
 
 OVERLAP_SUBNET_JSON=""
 if [ "$DHCPV4_INJECT_OVERLAPPING_SUBNET" = "1" ]; then
@@ -105,6 +113,25 @@ case "$KEA_VERSION" in
         ;;
 esac
 
+PING_CHECK_HOOKS='[]'
+if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ]; then
+    PING_CHECK_LIBRARY=$(find /usr/lib /usr/local/lib -name libdhcp_ping_check.so -print -quit 2>/dev/null || true)
+    if [ -z "$PING_CHECK_LIBRARY" ]; then
+        echo "[kea] ERROR: ping-check requested but libdhcp_ping_check.so is unavailable" >&2
+        exit 1
+    fi
+    PING_CHECK_HOOKS="[
+      {
+        \"library\": \"$PING_CHECK_LIBRARY\",
+        \"parameters\": {
+          \"enable-ping-check\": true,
+          \"min-ping-requests\": 1,
+          \"reply-timeout\": $DHCPV4_PING_TIMEOUT_MS
+        }
+      }
+    ]"
+fi
+
 mkdir -p /etc/kea /data /run/kea /var/run/kea /var/lib/kea
 # A container may be restarted after SIGKILL with the old PID file still on
 # its writable layer. PID 1 is then the entrypoint itself, so Kea otherwise
@@ -118,6 +145,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
 {
   "Dhcp4": {
     "authoritative": true,
+    "hooks-libraries": $PING_CHECK_HOOKS,
     "interfaces-config": {
       "interfaces": [ "$IFACE" ]
     },

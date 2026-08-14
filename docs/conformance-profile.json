@@ -23,6 +23,17 @@
       "tags": ["@retransmission"]
     },
     {
+      "id": "GAP-SERVER-PING-CHECK",
+      "title": "RFC 2131 server-side ICMP candidate-address probing",
+      "status": "covered",
+      "mode": "orchestrated",
+      "evidence": [
+        "features/dhcp_rfc2131_server_ping_check.feature",
+        "run_ping_check_tests.sh"
+      ],
+      "tags": ["@server_ping_check", "@ping_check_silent", "@ping_check_occupied"]
+    },
+    {
       "id": "GAP-CONCURRENCY",
       "title": "Concurrent client isolation",
       "status": "covered",

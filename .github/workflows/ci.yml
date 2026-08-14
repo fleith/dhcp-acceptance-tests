@@ -143,6 +143,51 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  server-ping-check:
+    name: RFC 2131 ping check / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ISC DHCP baseline
+            server: isc-dhcpd
+            server_version: baseline
+          - name: Kea 3.2.0 stable
+            server: kea
+            server_version: kea-stable
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Probe silent and responding candidate addresses
+        id: ping-check-tests
+        run: >-
+          bash ./run_ping_check_tests.sh
+          --server ${{ matrix.server }}
+          --server-version ${{ matrix.server_version }}
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down
+
+      - name: Publish server ping-check summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "RFC 2131 ping check / ${{ matrix.name }}"
+          --run-outcome "${{ steps.ping-check-tests.outcome }}"
+
+      - name: Upload server ping-check JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-ping-check-${{ matrix.server }}-${{ matrix.server_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   lifecycle-safety:
     name: Lifecycle and safety / ${{ matrix.server }}
     runs-on: ubuntu-latest
