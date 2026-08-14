@@ -24,6 +24,10 @@ DHCPV4_CLASS_NAME="${DHCPV4_CLASS_NAME:-acceptance-class}"
 DHCPV4_RELAY_SUBNET="${DHCPV4_RELAY_SUBNET:-172.29.2.0/24}"
 DHCPV4_INJECT_OVERLAPPING_SUBNET="${DHCPV4_INJECT_OVERLAPPING_SUBNET:-0}"
 DHCPV4_FORCE_STORAGE_FAILURE="${DHCPV4_FORCE_STORAGE_FAILURE:-0}"
+DHCPV4_PING_CHECK_ENABLED="${DHCPV4_PING_CHECK_ENABLED:-0}"
+DHCPV4_PING_TIMEOUT="${DHCPV4_PING_TIMEOUT:-1}"
+DHCPV4_PING_CHECK_ADDRESS="${DHCPV4_PING_CHECK_ADDRESS:-}"
+DHCPV4_PING_CHECK_PEER_MAC="${DHCPV4_PING_CHECK_PEER_MAC:-02:42:ac:1d:00:03}"
 
 # Convert prefix length to dotted-decimal netmask
 prefix_to_netmask() {
@@ -79,6 +83,14 @@ RELAY_NET3="$(echo "$RELAY_NET" | cut -d. -f1-3)"
 # through the Docker test interface without making it a directly served link.
 ip route add "$DHCPV4_RELAY_SUBNET" dev "$IFACE" >/dev/null 2>&1 || true
 
+# The isolated ping-check fixture supplies a stable L2 destination so an ICMP
+# probe for a silent address reaches the capture peer instead of stopping at
+# unresolved ARP. The occupied phase configures the address and answers it.
+if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ] && [ -n "$DHCPV4_PING_CHECK_ADDRESS" ]; then
+    ip neigh replace "$DHCPV4_PING_CHECK_ADDRESS" \
+        lladdr "$DHCPV4_PING_CHECK_PEER_MAC" nud permanent dev "$IFACE"
+fi
+
 OVERLAP_SUBNET_DECL=""
 if [ "$DHCPV4_INJECT_OVERLAPPING_SUBNET" = "1" ]; then
     OVERLAP_SUBNET_DECL="subnet $NET netmask 255.255.255.128 { range ${NET3}.10 ${NET3}.20; }"
@@ -94,6 +106,12 @@ if [ "$DHCPV4_ALT_POOL_ENABLED" = "1" ]; then
     ALT_POOL_RANGE="range ${ALT_NET3}.100 ${ALT_NET3}.200;"
 fi
 
+PING_CHECK_CONFIG="ping-check false;"
+if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ]; then
+    PING_CHECK_CONFIG="ping-check true;
+ping-timeout $DHCPV4_PING_TIMEOUT;"
+fi
+
 # Give dhcpd a local address on the alternate subnet so it can serve that pool
 # and emit a valid server identifier for RFC 3011 selection tests.
 ip addr add "${ALT_SERVER_IP}/${ALT_PREFIX}" dev "$IFACE" >/dev/null 2>&1 || true
@@ -103,6 +121,7 @@ cat > /data/dhcpd.conf << CONF
 # authoritative: send DHCPNAK for addresses this server cannot satisfy
 # (RFC 2131 §4.3.2).  Without this, ISC dhcpd stays silent instead of NAKing.
 authoritative;
+$PING_CHECK_CONFIG
 
 default-lease-time 120;
 # min = max = default so dhcpd always grants exactly 120 s regardless of

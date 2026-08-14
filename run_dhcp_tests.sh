@@ -147,7 +147,8 @@ configure_version_profile() {
     export TEST_BEHAVE_ARGS="${tag_args# }"
   fi
 
-  export TEST_RESULTS_DIR="/app/test-results/${SERVER}-${SERVER_VERSION}-${mode}"
+  local results_suffix="${TEST_RESULTS_RUN_SUFFIX:-}"
+  export TEST_RESULTS_DIR="/app/test-results/${SERVER}-${SERVER_VERSION}-${mode}${results_suffix:+-${results_suffix}}"
 }
 
 run_once() {

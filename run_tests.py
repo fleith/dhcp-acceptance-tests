@@ -7,6 +7,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+from pathlib import Path
+
+from summarize_junit import read_reports
 
 
 def get_interface_info(iface, family):
@@ -129,4 +132,16 @@ print(
 )
 
 result = subprocess.run([sys.executable, '-m', 'behave'] + behave_args, env=env)
+if result.returncode == 0 and env.get('TEST_REQUIRE_EXECUTED_SCENARIOS') == '1':
+    _, totals, _ = read_reports(Path(results_dir))
+    executed = max(
+        totals['tests'] - totals['failures'] - totals['errors'] - totals['skipped'],
+        0,
+    )
+    if executed == 0:
+        print(
+            '[test-runner] ERROR: focused invocation executed zero scenarios',
+            flush=True,
+        )
+        sys.exit(3)
 sys.exit(result.returncode)

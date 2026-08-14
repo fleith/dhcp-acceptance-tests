@@ -19,6 +19,7 @@ needed before making a complete claim.
 | Required | `bash ./run_dhcp_tests.sh --server <server> --ip-version <version>` | Protocol flows and ordinary negative cases |
 | Focused robustness | `bash ./run_dhcp_tests.sh --server <server> --ip-version v4 --tags @focused_robustness` | Bounded malformed corpus, concurrent load deadline, and churn |
 | Pool exhaustion | Select `@pool_exhaustion` with a deliberately small pool | Exhaustion and recovery without making normal runs consume the entire pool |
+| Server ping check | `bash ./run_ping_check_tests.sh --server <server>` | RFC 2131 candidate-address ICMP probing with silent and responding peers |
 | Lifecycle | `bash ./run_lifecycle_tests.sh --server <server>` | Graceful restart, SIGKILL recovery, and persistent binding ownership |
 | Configuration safety | `bash ./run_config_safety_tests.sh --server <server> [--overlap-policy reject\|allow]` | Explicit overlap policy and unavailable lease-store rejection |
 | Capability | Select `@capability` or one `@requires_*` tag and configure its adapter | Product features that cannot be assumed for every DHCP server |
@@ -26,6 +27,14 @@ needed before making a complete claim.
 The focused checks are deliberately bounded. They catch correctness and basic
 resource regressions; they are not a capacity benchmark, soak test, or a
 substitute for product-specific sizing.
+
+The server ping-check fixture uses separate one-address pools for its two
+phases. A fixed link-layer neighbor makes the server's ICMP request observable:
+the silent phase does not configure the candidate address and therefore sends
+no Echo Reply, while the occupied phase configures it and lets the kernel
+reply. ISC DHCP supports this directly. Kea uses its `libdhcp_ping_check.so`
+hook; the Kea 2.2 baseline predates that hook, so the runner defaults to Kea
+3.2 and rejects `--server-version baseline`.
 
 ## Capability adapters
 
