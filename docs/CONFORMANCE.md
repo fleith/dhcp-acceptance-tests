@@ -20,6 +20,7 @@ needed before making a complete claim.
 | Focused robustness | `bash ./run_dhcp_tests.sh --server <server> --ip-version v4 --tags @focused_robustness` | Bounded malformed corpus, concurrent load deadline, and churn |
 | Pool exhaustion | Select `@pool_exhaustion` with a deliberately small pool | Exhaustion and recovery without making normal runs consume the entire pool |
 | Server ping check | `bash ./run_ping_check_tests.sh --server <server>` | RFC 2131 candidate-address ICMP probing with silent and responding peers |
+| Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
 | Lifecycle | `bash ./run_lifecycle_tests.sh --server <server>` | Graceful restart, SIGKILL recovery, and persistent binding ownership |
 | Configuration safety | `bash ./run_config_safety_tests.sh --server <server> [--overlap-policy reject\|allow]` | Explicit overlap policy and unavailable lease-store rejection |
 | Capability | Select `@capability` or one `@requires_*` tag and configure its adapter | Product features that cannot be assumed for every DHCP server |
@@ -35,6 +36,15 @@ no Echo Reply, while the occupied phase configures it and lets the kernel
 reply. ISC DHCP supports this directly. Kea uses its `libdhcp_ping_check.so`
 hook; the Kea 2.2 baseline predates that hook, so the runner defaults to Kea
 3.2 and rejects `--server-version baseline`.
+
+The overlapping-lease fixture is intentionally separate from configuration
+safety. ISC DHCP rejects the supplied overlap topology, so its correct behavior
+remains covered by `run_config_safety_tests.sh`. Kea accepts the topology; the
+runtime runner gives the `/24` and `/25` disjoint pools and distinct domain-name
+markers, executes both declaration orders, and verifies that reordering alone
+does not change the reference selection result. DHCPOFFER and DHCPACK must stay
+in that selected scope. The runner also supplies a requested-address hint from
+the losing scope and proves the hint cannot cross the selection boundary.
 
 ## Capability adapters
 
