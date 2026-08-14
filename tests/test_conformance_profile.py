@@ -52,6 +52,7 @@ class ConformanceProfileTests(unittest.TestCase):
             "GAP-V4-RELAY",
             "GAP-POLICY",
             "GAP-CONFIG-SAFETY",
+            "GAP-OVERLAP-LEASE-SELECTION",
             "GAP-RELOAD",
             "GAP-MALFORMED",
             "GAP-CAPACITY",

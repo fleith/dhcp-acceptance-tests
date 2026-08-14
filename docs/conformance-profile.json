@@ -69,6 +69,17 @@
       "tags": []
     },
     {
+      "id": "GAP-OVERLAP-LEASE-SELECTION",
+      "title": "Runtime lease and option selection for accepted overlapping subnets",
+      "status": "covered",
+      "mode": "orchestrated",
+      "evidence": [
+        "features/dhcp_overlapping_subnet_leases.feature",
+        "run_overlap_lease_tests.sh"
+      ],
+      "tags": ["@overlap_lease_behavior", "@overlap_direct", "@overlap_hint"]
+    },
+    {
       "id": "GAP-RELOAD",
       "title": "Configuration reload without losing active bindings",
       "status": "conditional",

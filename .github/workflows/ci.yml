@@ -188,6 +188,49 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  overlapping-subnet-leases:
+    name: Overlapping subnet leases / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Kea 3.0.3 LTS
+            server_version: kea-lts
+          - name: Kea 3.2.0 stable
+            server_version: kea-stable
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify lease selection in both subnet declaration orders
+        id: overlap-lease-tests
+        run: >-
+          bash ./run_overlap_lease_tests.sh
+          --server kea
+          --server-version ${{ matrix.server_version }}
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down
+
+      - name: Publish overlapping-subnet summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Overlapping subnet leases / ${{ matrix.name }}"
+          --run-outcome "${{ steps.overlap-lease-tests.outcome }}"
+
+      - name: Upload overlapping-subnet JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: overlapping-subnet-leases-${{ matrix.server_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   lifecycle-safety:
     name: Lifecycle and safety / ${{ matrix.server }}
     runs-on: ubuntu-latest

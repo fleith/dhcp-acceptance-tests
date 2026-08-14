@@ -21,6 +21,7 @@ DHCPV4_RESERVED_OFFSET="${DHCPV4_RESERVED_OFFSET:-50}"
 DHCPV4_CLASS_NAME="${DHCPV4_CLASS_NAME:-acceptance-class}"
 DHCPV4_RELAY_SUBNET="${DHCPV4_RELAY_SUBNET:-172.29.2.0/24}"
 DHCPV4_INJECT_OVERLAPPING_SUBNET="${DHCPV4_INJECT_OVERLAPPING_SUBNET:-0}"
+DHCPV4_OVERLAP_ORDER="${DHCPV4_OVERLAP_ORDER:-primary-first}"
 DHCPV4_FORCE_STORAGE_FAILURE="${DHCPV4_FORCE_STORAGE_FAILURE:-0}"
 DHCPV4_PING_CHECK_ENABLED="${DHCPV4_PING_CHECK_ENABLED:-0}"
 DHCPV4_PING_TIMEOUT_MS="${DHCPV4_PING_TIMEOUT_MS:-300}"
@@ -76,9 +77,25 @@ if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ] && [ -n "$DHCPV4_PING_CHECK_ADDRESS" ]
         lladdr "$DHCPV4_PING_CHECK_PEER_MAC" nud permanent dev "$IFACE"
 fi
 
-OVERLAP_SUBNET_JSON=""
+OVERLAP_SUBNET_BEFORE=""
+OVERLAP_SUBNET_AFTER=""
+PRIMARY_OVERLAP_OPTION=""
 if [ "$DHCPV4_INJECT_OVERLAPPING_SUBNET" = "1" ]; then
-    OVERLAP_SUBNET_JSON=", { \"id\": 4, \"subnet\": \"$NET/25\", \"pools\": [ { \"pool\": \"${NET3}.10 - ${NET3}.20\" } ] }"
+    OVERLAP_SUBNET_OBJECT="{ \"id\": 4, \"subnet\": \"$NET/25\", \"pools\": [ { \"pool\": \"${NET3}.10 - ${NET3}.20\" } ], \"option-data\": [ { \"name\": \"domain-name\", \"data\": \"overlap-specific.test\" } ] }"
+    PRIMARY_OVERLAP_OPTION=',
+          { "name": "domain-name", "data": "overlap-primary.test" }'
+    case "$DHCPV4_OVERLAP_ORDER" in
+        primary-first)
+            OVERLAP_SUBNET_AFTER=", $OVERLAP_SUBNET_OBJECT"
+            ;;
+        specific-first)
+            OVERLAP_SUBNET_BEFORE="$OVERLAP_SUBNET_OBJECT,"
+            ;;
+        *)
+            echo "[kea] ERROR: DHCPV4_OVERLAP_ORDER must be primary-first or specific-first" >&2
+            exit 1
+            ;;
+    esac
 fi
 
 LEASE_FILE=/var/lib/kea/kea-leases4.csv
@@ -173,6 +190,7 @@ $RFC3442_OPTION_DEF
     "rebind-timer": 105,
     "valid-lifetime": 120,
     "subnet4": [
+      $OVERLAP_SUBNET_BEFORE
       {
         "id": 1,
         "subnet": "$NET/$PREFIX",
@@ -187,7 +205,7 @@ $RFC3442_OPTION_DEF
         "option-data": [
           { "name": "routers", "data": "${NET3}.1" },
           { "name": "subnet-mask", "data": "$NETMASK" },
-          { "name": "domain-name-servers", "data": "8.8.8.8" },
+          { "name": "domain-name-servers", "data": "8.8.8.8" }$PRIMARY_OVERLAP_OPTION,
           {
             "name": "classless-static-route",
             "data": "$RFC3442_ROUTES",
@@ -214,7 +232,7 @@ $RFC3442_OPTION_DEF
           { "name": "routers", "data": "${RELAY_NET3}.1" },
           { "name": "domain-name-servers", "data": "8.8.8.8" }
         ]
-      }$OVERLAP_SUBNET_JSON
+      }$OVERLAP_SUBNET_AFTER
     ],
     "loggers": [
       {
@@ -227,7 +245,7 @@ $RFC3442_OPTION_DEF
 }
 CONF
 
-echo "[kea] version=$KEA_VERSION interface=$IFACE ip=$IP netmask=$NETMASK network=$NET pool=${NET3}.${DHCPV4_POOL_START_OFFSET}-${NET3}.${DHCPV4_POOL_END_OFFSET} alt_subnet=$ALT_SUBNET_CIDR"
+echo "[kea] version=$KEA_VERSION interface=$IFACE ip=$IP netmask=$NETMASK network=$NET pool=${NET3}.${DHCPV4_POOL_START_OFFSET}-${NET3}.${DHCPV4_POOL_END_OFFSET} alt_subnet=$ALT_SUBNET_CIDR overlap_order=$DHCPV4_OVERLAP_ORDER"
 echo "[kea] Generated /etc/kea/kea-dhcp4.conf:"
 cat /etc/kea/kea-dhcp4.conf
 

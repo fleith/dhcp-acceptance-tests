@@ -62,6 +62,9 @@ bash ./run_lifecycle_tests.sh --server kea
 # Overlap policy and unavailable lease-store startup behavior
 bash ./run_config_safety_tests.sh --server isc-dhcpd --overlap-policy reject
 
+# Runtime lease and option selection for accepted overlapping Kea subnets
+bash ./run_overlap_lease_tests.sh --server kea --server-version kea-stable
+
 # Bounded malformed corpus, concurrent deadline, and lease churn
 bash ./run_dhcp_tests.sh --server kea --ip-version v4 --tags @focused_robustness
 
@@ -131,6 +134,12 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_CHURN_CYCLES` | `12` | Bounded acquire/release churn cycles (2..64) |
 | `TEST_DHCPV4_FUZZ_CASES` | `24` | Deterministic malformed corpus size (5..128) |
 | `TEST_DHCPV4_PING_CHECK_ADDRESS` | empty | Candidate address used only by the isolated server ping-check runner |
+| `DHCPV4_OVERLAP_ORDER` | `primary-first` | Kea fixture order: `primary-first` or `specific-first` |
+| `TEST_DHCPV4_OVERLAP_EXPECTED_POOL_START` | empty | First address expected from the selected scope in an isolated overlap run |
+| `TEST_DHCPV4_OVERLAP_EXPECTED_POOL_END` | empty | Last address expected from the selected scope in an isolated overlap run |
+| `TEST_DHCPV4_OVERLAP_LOSING_HINT` | empty | Requested-address hint from the non-selected overlapping scope |
+| `TEST_DHCPV4_OVERLAP_EXPECTED_DOMAIN` | empty | Domain-name marker proving which overlapping scope supplied response policy |
+| `TEST_DHCPV4_OVERLAP_EXPECTED_SCOPE` | empty | Human-readable selected-scope label used in overlap assertion failures |
 | `TEST_CAPABILITIES` | empty | Comma-separated optional capabilities to enable |
 
 ## Coverage snapshot
@@ -161,6 +170,10 @@ Beyond the RFC packet flows, the qualification profile now covers duplicate
 transactions, concurrent clients, real `giaddr` relay forwarding with exact
 Option 82 preservation, reservations, client classes, bounded malformed input,
 load deadlines, churn, persistence, crash recovery, and configuration safety.
+For backends that accept overlapping subnets, the isolated Kea profile also
+checks that both declaration orders retain the reference selection result,
+OFFER-to-ACK scope consistency, scope-specific options, and rejection of
+requested-address hints from the non-selected pool.
 Reload, HA, DDNS, a second direct interface, and authenticated DHCPv6
 Reconfigure, plus runtime lease-storage fault injection, have executable
 capability-gated scenarios because they require a product-specific topology or
