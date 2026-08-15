@@ -55,7 +55,7 @@ def _matches(packet, clients, message_types):
     return bytes(packet[BOOTP].chaddr)[: len(expected_mac)] == expected_mac
 
 
-def _capture_exchange(entries, message_types):
+def _capture_exchange(entries, message_types, timeout=CAPTURE_TIMEOUT):
     require_scapy_v4()
     assert sendp is not None, "Scapy send support is required for soak tests"
     clients = {entry["xid"]: entry for entry in entries}
@@ -68,7 +68,7 @@ def _capture_exchange(entries, message_types):
 
     sniffer = start_dhcp_sniffer(
         INTERFACE,
-        timeout=CAPTURE_TIMEOUT,
+        timeout=timeout,
         stop_filter=stop_filter,
     )
     for entry in entries:
@@ -210,3 +210,12 @@ def percentile(values, requested_percentile):
         math.ceil((requested_percentile / 100.0) * len(ordered)) - 1,
     )
     return ordered[index]
+
+
+# Public aliases for orchestrated suites that need partial exchanges rather
+# than the all-or-nothing acquire/release helpers above.
+new_mac = _new_mac
+unique_xid = _unique_xid
+message_type = _message_type
+capture_exchange = _capture_exchange
+selection_request = _selection_request

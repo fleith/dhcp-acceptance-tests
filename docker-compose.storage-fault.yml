@@ -1,0 +1,16 @@
+services:
+  dhcp-server:
+    entrypoint: ["/storage-fault-entrypoint.sh"]
+    environment:
+      DHCPV4_STORAGE_TARGET: ${DHCPV4_STORAGE_TARGET:-/data}
+    volumes:
+      - storage-fault-backing:/storage-fault-backing
+
+  test-runner:
+    image: dhcp-storage-fault-runner:local
+    build:
+      context: .
+      dockerfile: storage-fault-runner.Dockerfile
+
+volumes:
+  storage-fault-backing:

@@ -143,6 +143,54 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  runtime-storage-fault:
+    name: Runtime storage fault / ${{ matrix.name }}
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ISC DHCP baseline
+            server: isc-dhcpd
+            server_version: baseline
+          - name: Kea 3.2.0
+            server: kea
+            server_version: kea-stable
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Exhaust lease storage and verify forced-restart recovery
+        id: storage-fault-tests
+        run: >-
+          bash ./run_storage_fault_tests.sh
+          --server ${{ matrix.server }}
+          --server-version ${{ matrix.server_version }}
+
+      - name: Tear down storage-fault fixture
+        if: always()
+        run: |
+          docker rm -f dhcp-storage-fault-runner 2>/dev/null || true
+          docker compose -f docker-compose.yml -f docker-compose.storage-fault.yml down -v
+
+      - name: Publish storage-fault summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Runtime storage fault / ${{ matrix.name }}"
+          --run-outcome "${{ steps.storage-fault-tests.outcome }}"
+
+      - name: Upload storage-fault reports, metrics, and server evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-storage-fault-${{ matrix.server_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   stress-crash-smoke:
     name: Stress crash smoke / ${{ matrix.name }}
     if: github.event_name == 'push' || github.event_name == 'pull_request'
