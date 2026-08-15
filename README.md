@@ -74,6 +74,12 @@ bash ./run_stress_crash_tests.sh --server kea --server-version kea-stable --prof
 # Larger scheduled profile: 480 churn commits plus the crash/recovery waves
 bash ./run_stress_crash_tests.sh --server kea --server-version kea-stable --profile scheduled
 
+# Bounded lease soak with CPU, memory, PID, latency, and pool-reuse metrics
+bash ./run_soak_tests.sh --server kea --server-version kea-stable --profile smoke
+
+# Scheduled profile: 120 rounds x 24 clients = 2,880 lease commits
+bash ./run_soak_tests.sh --server kea --server-version kea-stable --profile scheduled
+
 # RFC 2131 server ping-check: silent candidate and responding candidate
 bash ./run_ping_check_tests.sh --server isc-dhcpd
 bash ./run_ping_check_tests.sh --server kea  # defaults to Kea 3.2
@@ -156,6 +162,17 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_STRESS_BATCH_DEADLINE` | `20` | Maximum elapsed seconds for one completed stress DORA batch |
 | `TEST_DHCPV4_STRESS_P95_LIMIT_MS` | `3000` | Maximum combined response-latency p95 for completed transactions |
 | `TEST_DHCPV4_STRESS_POOL_CAPACITY` | `101` | Safety check preventing a profile from exceeding the isolated pool |
+| `TEST_DHCPV4_SOAK_ROUNDS` | `8` | Acquire/release rounds in the bounded soak (2..1000) |
+| `TEST_DHCPV4_SOAK_BATCH_SIZE` | `16` | Batched clients committed and released per soak round |
+| `TEST_DHCPV4_SOAK_POST_BATCH_SIZE` | `8` | Fresh clients used for the post-soak availability check |
+| `TEST_DHCPV4_SOAK_POOL_CAPACITY` | `101` | Isolated pool size used to require and validate released-address reuse |
+| `TEST_DHCPV4_SOAK_RELEASE_SETTLE_SECONDS` | `0.2` | Delay after each release batch before the next round |
+| `TEST_DHCPV4_SOAK_CAPTURE_TIMEOUT` | `10` | Maximum seconds to collect each OFFER or ACK response batch |
+| `TEST_DHCPV4_SOAK_BATCH_DEADLINE` | `20` | Maximum elapsed seconds for each completed DORA batch |
+| `TEST_DHCPV4_SOAK_P95_LIMIT_MS` | `3000` | Maximum overall DHCP response-latency p95 |
+| `TEST_DHCPV4_SOAK_LATENCY_GROWTH_LIMIT_MS` | `500` | Maximum late-window p95 increase over the early-window p95 |
+| `TEST_DHCPV4_SOAK_MEMORY_GROWTH_LIMIT_MIB` | `64` | Maximum final server-memory increase over the pre-soak sample |
+| `TEST_DHCPV4_SOAK_PIDS_GROWTH_LIMIT` | `8` | Maximum final server PID-count increase over the pre-soak sample |
 | `TEST_CAPABILITIES` | empty | Comma-separated optional capabilities to enable |
 
 ## Coverage snapshot
@@ -191,6 +208,12 @@ mixed allocation, renewal, and retransmission traffic during SIGKILL. Every
 ACK observed before process death must recover for the same client; fresh
 post-restart clients must not receive any active recorded address. The runner
 also emits JSON p50/p95/p99 latency and transaction-count metrics with JUnit.
+The scheduled DHCPv4 soak adds repeated acquire/release rounds that exceed the
+pool capacity cumulatively, proving that released addresses return safely to
+service. It compares early and late latency windows, verifies availability
+after the final round, and records server CPU, memory, and PID measurements.
+Configured growth limits catch bounded resource regressions; the measurements
+remain environment-specific and are not portable capacity numbers.
 For backends that accept overlapping subnets, the isolated Kea profile also
 checks that both declaration orders retain the reference selection result,
 OFFER-to-ACK scope consistency, scope-specific options, and rejection of

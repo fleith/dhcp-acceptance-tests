@@ -97,16 +97,18 @@
     },
     {
       "id": "GAP-CAPACITY",
-      "title": "Pool exhaustion, bounded load, deadline, and lease churn",
+      "title": "Pool exhaustion, bounded load, lease churn, soak, and resource growth",
       "status": "partial",
       "mode": "focused",
       "evidence": [
         "features/dhcp_address_pool.feature",
         "features/dhcpv4_conformance.feature",
         "features/dhcpv4_stress_crash.feature",
-        "run_stress_crash_tests.sh"
+        "features/dhcpv4_soak.feature",
+        "run_stress_crash_tests.sh",
+        "run_soak_tests.sh"
       ],
-      "tags": ["@pool_exhaustion", "@load", "@churn", "@stress_crash"]
+      "tags": ["@pool_exhaustion", "@load", "@churn", "@stress_crash", "@soak"]
     },
     {
       "id": "GAP-CRASH-CONSISTENCY",

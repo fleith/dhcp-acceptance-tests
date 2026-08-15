@@ -237,6 +237,54 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  dhcpv4-soak-scheduled:
+    name: Scheduled DHCPv4 soak / ${{ matrix.name }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ISC DHCP 4.4.3-P1
+            server: isc-dhcpd
+            server_version: isc-final
+          - name: Kea 3.2.0
+            server: kea
+            server_version: kea-stable
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run lease churn with resource sampling
+        id: soak-tests
+        run: >-
+          bash ./run_soak_tests.sh
+          --server ${{ matrix.server }}
+          --server-version ${{ matrix.server_version }}
+          --profile scheduled
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down
+
+      - name: Publish soak summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Scheduled DHCPv4 soak / ${{ matrix.name }}"
+          --run-outcome "${{ steps.soak-tests.outcome }}"
+
+      - name: Upload soak reports and resource metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dhcpv4-soak-${{ matrix.server_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   server-ping-check:
     name: RFC 2131 ping check / ${{ matrix.name }}
     runs-on: ubuntu-latest

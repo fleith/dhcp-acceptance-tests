@@ -20,6 +20,7 @@ needed before making a complete claim.
 | Focused robustness | `bash ./run_dhcp_tests.sh --server <server> --ip-version v4 --tags @focused_robustness` | Bounded malformed corpus, concurrent load deadline, and churn |
 | Stress/crash smoke | `bash ./run_stress_crash_tests.sh --server <server> --profile smoke` | PR-safe mixed allocation, renewal, retransmission, SIGKILL, and durable-ACK recovery |
 | Scheduled stress/crash | `bash ./run_stress_crash_tests.sh --server <server> --profile scheduled` | 480 pre-crash churn commits plus larger active, in-flight, and recovery waves |
+| Scheduled DHCPv4 soak | `bash ./run_soak_tests.sh --server <server> --profile scheduled` | 2,880 acquire/release commits, released-address reuse, latency drift, post-soak availability, and container resource growth |
 | Pool exhaustion | Select `@pool_exhaustion` with a deliberately small pool | Exhaustion and recovery without making normal runs consume the entire pool |
 | Server ping check | `bash ./run_ping_check_tests.sh --server <server>` | RFC 2131 candidate-address ICMP probing with silent and responding peers |
 | Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
@@ -27,11 +28,20 @@ needed before making a complete claim.
 | Configuration safety | `bash ./run_config_safety_tests.sh --server <server> [--overlap-policy reject\|allow]` | Explicit overlap policy and unavailable lease-store rejection |
 | Capability | Select `@capability` or one `@requires_*` tag and configure its adapter | Product features that cannot be assumed for every DHCP server |
 
-The focused and stress/crash checks are deliberately bounded. They catch
+The focused, stress/crash, and soak checks are deliberately bounded. They catch
 correctness, latency, persistence, and basic resource regressions; they are not
 a hardware capacity benchmark, multi-hour soak test, or a substitute for
 product-specific sizing. The smoke profile runs on pushes and pull requests.
-The larger profile runs on the scheduled workflow and manual dispatch.
+The larger profiles run on the scheduled workflow and manual dispatch.
+
+The bounded DHCPv4 soak deliberately requests more leases over time than the
+isolated pool could supply without reuse. Every round must commit unique active
+addresses and release them; later rounds must reuse at least one released
+address without conflict. Early and late response-latency windows are compared,
+and a fresh batch must still complete after the soak. Concurrent host sampling
+records server CPU, memory, and PID usage. Final memory and PID growth have
+explicit regression limits, while CPU is reported for diagnosis rather than
+treated as a portable pass/fail capacity threshold.
 
 The stress/crash runner coordinates the client and host through explicit state
 markers. It commits and records a durable batch, starts new allocation requests
@@ -78,10 +88,10 @@ Reconfigure validator receives `TEST_RECONFIGURE_PACKET_HEX_FILE`, pointing to
 the captured packet encoded as hexadecimal, and must exit non-zero if
 cryptographic authentication is invalid.
 
-The supplied malformed-input, load, and churn tests are intentionally bounded,
-so their profile rows remain `partial`: broader per-message/per-option fuzzing,
-large-pool benchmarking, and long-duration soak testing still belong in a
-target service's deployment qualification.
+The supplied malformed-input, load, churn, and soak tests are intentionally
+bounded, so their profile rows remain `partial`: broader per-message/per-option
+fuzzing, large-pool benchmarking, and multi-hour or multi-day soak testing still
+belong in a target service's deployment qualification.
 
 ## Claim boundary and RFC traceability
 
