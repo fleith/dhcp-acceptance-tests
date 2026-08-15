@@ -18,6 +18,8 @@ needed before making a complete claim.
 |---|---|---|
 | Required | `bash ./run_dhcp_tests.sh --server <server> --ip-version <version>` | Protocol flows and ordinary negative cases |
 | Focused robustness | `bash ./run_dhcp_tests.sh --server <server> --ip-version v4 --tags @focused_robustness` | Bounded malformed corpus, concurrent load deadline, and churn |
+| Stress/crash smoke | `bash ./run_stress_crash_tests.sh --server <server> --profile smoke` | PR-safe mixed allocation, renewal, retransmission, SIGKILL, and durable-ACK recovery |
+| Scheduled stress/crash | `bash ./run_stress_crash_tests.sh --server <server> --profile scheduled` | 480 pre-crash churn commits plus larger active, in-flight, and recovery waves |
 | Pool exhaustion | Select `@pool_exhaustion` with a deliberately small pool | Exhaustion and recovery without making normal runs consume the entire pool |
 | Server ping check | `bash ./run_ping_check_tests.sh --server <server>` | RFC 2131 candidate-address ICMP probing with silent and responding peers |
 | Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
@@ -25,9 +27,19 @@ needed before making a complete claim.
 | Configuration safety | `bash ./run_config_safety_tests.sh --server <server> [--overlap-policy reject\|allow]` | Explicit overlap policy and unavailable lease-store rejection |
 | Capability | Select `@capability` or one `@requires_*` tag and configure its adapter | Product features that cannot be assumed for every DHCP server |
 
-The focused checks are deliberately bounded. They catch correctness and basic
-resource regressions; they are not a capacity benchmark, soak test, or a
-substitute for product-specific sizing.
+The focused and stress/crash checks are deliberately bounded. They catch
+correctness, latency, persistence, and basic resource regressions; they are not
+a hardware capacity benchmark, multi-hour soak test, or a substitute for
+product-specific sizing. The smoke profile runs on pushes and pull requests.
+The larger profile runs on the scheduled workflow and manual dispatch.
+
+The stress/crash runner coordinates the client and host through explicit state
+markers. It commits and records a durable batch, starts new allocation requests
+plus renewals and retransmissions, and only then SIGKILLs the server. Every ACK
+captured before death is recorded. After restart, the original clients must
+reassert those exact addresses, and a fresh batch must avoid every active
+binding. JSON metrics include transaction counts, batch duration, and p50,
+p95, p99, and maximum response latency.
 
 The server ping-check fixture uses separate one-address pools for its two
 phases. A fixed link-layer neighbor makes the server's ICMP request observable:

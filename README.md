@@ -68,6 +68,12 @@ bash ./run_overlap_lease_tests.sh --server kea --server-version kea-stable
 # Bounded malformed corpus, concurrent deadline, and lease churn
 bash ./run_dhcp_tests.sh --server kea --ip-version v4 --tags @focused_robustness
 
+# Mixed allocation/renewal load with SIGKILL and durable-ACK recovery
+bash ./run_stress_crash_tests.sh --server kea --server-version kea-stable --profile smoke
+
+# Larger scheduled profile: 480 churn commits plus the crash/recovery waves
+bash ./run_stress_crash_tests.sh --server kea --server-version kea-stable --profile scheduled
+
 # RFC 2131 server ping-check: silent candidate and responding candidate
 bash ./run_ping_check_tests.sh --server isc-dhcpd
 bash ./run_ping_check_tests.sh --server kea  # defaults to Kea 3.2
@@ -140,6 +146,16 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_OVERLAP_LOSING_HINT` | empty | Requested-address hint from the non-selected overlapping scope |
 | `TEST_DHCPV4_OVERLAP_EXPECTED_DOMAIN` | empty | Domain-name marker proving which overlapping scope supplied response policy |
 | `TEST_DHCPV4_OVERLAP_EXPECTED_SCOPE` | empty | Human-readable selected-scope label used in overlap assertion failures |
+| `TEST_DHCPV4_STRESS_PREPARE_CLIENTS` | `32` | Active bindings committed and recorded before the orchestrated crash |
+| `TEST_DHCPV4_STRESS_INFLIGHT_CLIENTS` | `24` | New clients requesting leases while the server is SIGKILLed |
+| `TEST_DHCPV4_STRESS_POST_CLIENTS` | `8` | Fresh clients admitted after recovery without duplicating active bindings |
+| `TEST_DHCPV4_STRESS_CHURN_ROUNDS` | `2` | Acquire/release rounds completed before the durable active batch |
+| `TEST_DHCPV4_STRESS_CHURN_BATCH` | `8` | Clients committed in each pre-crash churn round |
+| `TEST_DHCPV4_STRESS_CRASH_LOAD_SECONDS` | `3` | Maximum mixed allocation, renewal, and retransmission window around SIGKILL |
+| `TEST_DHCPV4_STRESS_CAPTURE_TIMEOUT` | `10` | Maximum seconds to collect a complete stress response batch |
+| `TEST_DHCPV4_STRESS_BATCH_DEADLINE` | `20` | Maximum elapsed seconds for one completed stress DORA batch |
+| `TEST_DHCPV4_STRESS_P95_LIMIT_MS` | `3000` | Maximum combined response-latency p95 for completed transactions |
+| `TEST_DHCPV4_STRESS_POOL_CAPACITY` | `101` | Safety check preventing a profile from exceeding the isolated pool |
 | `TEST_CAPABILITIES` | empty | Comma-separated optional capabilities to enable |
 
 ## Coverage snapshot
@@ -170,6 +186,11 @@ Beyond the RFC packet flows, the qualification profile now covers duplicate
 transactions, concurrent clients, real `giaddr` relay forwarding with exact
 Option 82 preservation, reservations, client classes, bounded malformed input,
 load deadlines, churn, persistence, crash recovery, and configuration safety.
+The isolated stress/crash profiles add sustained acquire/release batches and
+mixed allocation, renewal, and retransmission traffic during SIGKILL. Every
+ACK observed before process death must recover for the same client; fresh
+post-restart clients must not receive any active recorded address. The runner
+also emits JSON p50/p95/p99 latency and transaction-count metrics with JUnit.
 For backends that accept overlapping subnets, the isolated Kea profile also
 checks that both declaration orders retain the reference selection result,
 OFFER-to-ACK scope consistency, scope-specific options, and rejection of

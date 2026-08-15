@@ -143,6 +143,100 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  stress-crash-smoke:
+    name: Stress crash smoke / ${{ matrix.name }}
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ISC DHCP 4.4.3-P1
+            server: isc-dhcpd
+            server_version: isc-final
+          - name: Kea 3.2.0
+            server: kea
+            server_version: kea-stable
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Crash the server during mixed DHCPv4 load
+        id: stress-crash-tests
+        run: >-
+          bash ./run_stress_crash_tests.sh
+          --server ${{ matrix.server }}
+          --server-version ${{ matrix.server_version }}
+          --profile smoke
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down
+
+      - name: Publish stress-crash summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Stress crash smoke / ${{ matrix.name }}"
+          --run-outcome "${{ steps.stress-crash-tests.outcome }}"
+
+      - name: Upload stress reports and metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-crash-smoke-${{ matrix.server_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
+  stress-crash-scheduled:
+    name: Scheduled stress crash / ${{ matrix.name }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ISC DHCP 4.4.3-P1
+            server: isc-dhcpd
+            server_version: isc-final
+          - name: Kea 3.2.0
+            server: kea
+            server_version: kea-stable
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run the scheduled mixed-load crash profile
+        id: scheduled-stress-tests
+        run: >-
+          bash ./run_stress_crash_tests.sh
+          --server ${{ matrix.server }}
+          --server-version ${{ matrix.server_version }}
+          --profile scheduled
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down
+
+      - name: Publish scheduled stress summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Scheduled stress crash / ${{ matrix.name }}"
+          --run-outcome "${{ steps.scheduled-stress-tests.outcome }}"
+
+      - name: Upload scheduled stress reports and metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-crash-scheduled-${{ matrix.server_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   server-ping-check:
     name: RFC 2131 ping check / ${{ matrix.name }}
     runs-on: ubuntu-latest
