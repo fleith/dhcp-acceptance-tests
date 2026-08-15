@@ -5,4 +5,5 @@ dhcp/data/dhcpd.leases
 dhcp/data/dhcpd.leases~
 .claude/
 test-results/
+test-state/
 compatibility.log
