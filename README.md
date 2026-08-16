@@ -83,6 +83,10 @@ bash ./run_soak_tests.sh --server kea --server-version kea-stable --profile sche
 # RFC 2131 server ping-check: silent candidate and responding candidate
 bash ./run_ping_check_tests.sh --server isc-dhcpd
 bash ./run_ping_check_tests.sh --server kea  # defaults to Kea 3.2
+
+# Exhaust isolated lease storage, force-kill, and reconcile durable ACKs
+bash ./run_storage_fault_tests.sh --server isc-dhcpd
+bash ./run_storage_fault_tests.sh --server kea --server-version kea-stable
 ```
 
 Optional product capabilities are tagged `@capability` and skipped unless
@@ -173,6 +177,10 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_SOAK_LATENCY_GROWTH_LIMIT_MS` | `500` | Maximum late-window p95 increase over the early-window p95 |
 | `TEST_DHCPV4_SOAK_MEMORY_GROWTH_LIMIT_MIB` | `64` | Maximum final server-memory increase over the pre-soak sample |
 | `TEST_DHCPV4_SOAK_PIDS_GROWTH_LIMIT` | `8` | Maximum final server PID-count increase over the pre-soak sample |
+| `TEST_DHCPV4_STORAGE_BASELINE_CLIENTS` | `10` | Durable clients recorded before isolated lease storage is exhausted |
+| `TEST_DHCPV4_STORAGE_POOL_CAPACITY` | `11` | Safety check for the dedicated storage-fault pool |
+| `TEST_DHCPV4_STORAGE_FAULT_TIMEOUT` | `4` | Maximum seconds to capture the transaction attempted under `ENOSPC` |
+| `TEST_DHCPV4_STORAGE_RECOVERY_TIMEOUT` | `10` | Maximum seconds to reconcile durable owners after forced restart |
 | `TEST_CAPABILITIES` | empty | Comma-separated optional capabilities to enable |
 
 ## Coverage snapshot
@@ -214,14 +222,21 @@ service. It compares early and late latency windows, verifies availability
 after the final round, and records server CPU, memory, and PID measurements.
 Configured growth limits catch bounded resource regressions; the measurements
 remain environment-specific and are not portable capacity numbers.
+The runtime storage-fault profile fills a disposable 32 MiB lease filesystem,
+records the final transaction outcome, force-kills the server, restores
+capacity, and requires every pre-fault binding plus every fault-time ACK to
+survive with exact client/address ownership. A server that does not ACK under
+the fault must admit that client safely after recovery. The filler is capped
+at 64 MiB and the test volume is deleted after each run.
 For backends that accept overlapping subnets, the isolated Kea profile also
 checks that both declaration orders retain the reference selection result,
 OFFER-to-ACK scope consistency, scope-specific options, and rejection of
 requested-address hints from the non-selected pool.
 Reload, HA, DDNS, a second direct interface, and authenticated DHCPv6
-Reconfigure, plus runtime lease-storage fault injection, have executable
-capability-gated scenarios because they require a product-specific topology or
-control-plane adapter. The machine-readable index is
+Reconfigure have executable capability-gated scenarios because they require a
+product-specific topology or control-plane adapter. External services may also
+use the storage-fault capability adapter, while ISC DHCP and Kea run the
+bundled isolated storage profile in CI. The machine-readable index is
 [`docs/conformance-profile.json`](docs/conformance-profile.json).
 
 ## Project structure

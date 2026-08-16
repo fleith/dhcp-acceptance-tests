@@ -26,6 +26,7 @@ needed before making a complete claim.
 | Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
 | Lifecycle | `bash ./run_lifecycle_tests.sh --server <server>` | Graceful restart, SIGKILL recovery, and persistent binding ownership |
 | Configuration safety | `bash ./run_config_safety_tests.sh --server <server> [--overlap-policy reject\|allow]` | Explicit overlap policy and unavailable lease-store rejection |
+| Runtime storage fault | `bash ./run_storage_fault_tests.sh --server <server>` | Exhaust an isolated lease filesystem, SIGKILL, and reconcile every ACK after recovery |
 | Capability | Select `@capability` or one `@requires_*` tag and configure its adapter | Product features that cannot be assumed for every DHCP server |
 
 The focused, stress/crash, and soak checks are deliberately bounded. They catch
@@ -50,6 +51,17 @@ captured before death is recorded. After restart, the original clients must
 reassert those exact addresses, and a fresh batch must avoid every active
 binding. JSON metrics include transaction counts, batch duration, and p50,
 p95, p99, and maximum response latency.
+
+The runtime storage-fault runner mounts the lease database on a disposable
+32 MiB ext4 loop filesystem and fills it to a verified `ENOSPC` condition.
+Ten durable clients occupy all but one pool address before a final client
+attempts to commit. The server is then killed without a graceful shutdown,
+capacity is restored while it is stopped, and the service restarts. A
+fault-time ACK is permitted only when that exact client/address binding
+survives the crash; otherwise the unacknowledged client must commit safely
+after recovery. All ten pre-fault owners must also retain their addresses.
+The fixture is bounded to 64 MiB of filler data and deletes its test-only
+volume on exit.
 
 The server ping-check fixture uses separate one-address pools for its two
 phases. A fixed link-layer neighbor makes the server's ICMP request observable:
@@ -81,7 +93,7 @@ reported as a pass.
 | `ddns` | `TEST_DNS_SERVER` and `TEST_DDNS_FQDN` |
 | `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP` |
 | `authenticated_reconfigure` | `TEST_RECONFIGURE_TRIGGER_COMMAND` and `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` |
-| `storage_fault` | `TEST_STORAGE_FAIL_COMMAND` and `TEST_STORAGE_RECOVER_COMMAND` |
+| `storage_fault` | `TEST_STORAGE_FAIL_COMMAND` and `TEST_STORAGE_RECOVER_COMMAND` for an external target; the bundled reference fixtures use `run_storage_fault_tests.sh` |
 
 Adapter commands execute inside the test-runner container. The authenticated
 Reconfigure validator receives `TEST_RECONFIGURE_PACKET_HEX_FILE`, pointing to
