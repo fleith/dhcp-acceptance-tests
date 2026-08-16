@@ -155,10 +155,47 @@ verify_lease_store() {
 
 exhaust_lease_storage() {
   MSYS_NO_PATHCONV=1 docker exec dhcp-test-server sh -c \
-    "rm -f '${FILL_FILE}' '${STORAGE_DIR}/.storage-fault-probe'; sync; \
-     status=0; dd if=/dev/zero of='${FILL_FILE}' bs=1M count=64 2>/dev/null || status=\$?; \
-     test \"\$status\" -ne 0; sync || true; \
-     ! dd if=/dev/zero of='${STORAGE_DIR}/.storage-fault-probe' bs=4096 count=1 2>/dev/null"
+    "mount_source=\$(awk -v target='${STORAGE_DIR}' \
+       '\$2 == target { source=\$1 } END { print source }' /proc/mounts); \
+     case \"\$mount_source\" in /dev/loop*) ;; \
+       *) echo '[ERROR] Lease storage is not mounted from a loop device:' \"\$mount_source\"; exit 1 ;; \
+     esac; \
+     size_kib=\$(df -Pk '${STORAGE_DIR}' | awk 'NR == 2 { print \$2 }'); \
+     available_kib=\$(df -Pk '${STORAGE_DIR}' | awk 'NR == 2 { print \$4 }'); \
+     test \"\$size_kib\" -ge 16384 && test \"\$size_kib\" -le 49152 || { \
+       echo '[ERROR] Lease filesystem size is outside the 16-48 MiB safety range:' \"\$size_kib KiB\"; exit 1; \
+     }; \
+     echo '[INFO] Lease filesystem source='\"\$mount_source\" \
+          'size_kib='\"\$size_kib\" 'available_kib='\"\$available_kib\"; \
+     rm -f '${FILL_FILE}' '${STORAGE_DIR}/.storage-fault-probe' /tmp/storage-fault-dd.err; sync; \
+     fault_seen=0; \
+     for block_size in 1048576 65536 4096 1024 1; do \
+       while :; do \
+         fill_bytes=\$(stat -c %s '${FILL_FILE}' 2>/dev/null || echo 0); \
+         test \"\$fill_bytes\" -lt 67108864 || { \
+           echo '[ERROR] Storage filler reached the 64 MiB safety limit without ENOSPC'; exit 1; \
+         }; \
+         if dd if=/dev/zero bs=\"\$block_size\" count=1 \
+              >> '${FILL_FILE}' 2>/tmp/storage-fault-dd.err; then \
+           sync; \
+         else \
+           fault_seen=1; \
+           break; \
+         fi; \
+       done; \
+     done; \
+     test \"\$fault_seen\" -eq 1; \
+     fill_bytes=\$(stat -c %s '${FILL_FILE}'); \
+     probe_status=0; \
+     dd if=/dev/zero of='${STORAGE_DIR}/.storage-fault-probe' \
+        bs=1 count=1 2>>/tmp/storage-fault-dd.err || probe_status=\$?; \
+     rm -f '${STORAGE_DIR}/.storage-fault-probe'; \
+     test \"\$probe_status\" -ne 0 || { \
+       echo '[ERROR] Lease filesystem still accepted a one-byte allocation'; exit 1; \
+     }; \
+     echo '[INFO] Lease filesystem exhausted fill_bytes='\"\$fill_bytes\" \
+          'probe_status='\"\$probe_status\"; \
+     tail -n 1 /tmp/storage-fault-dd.err || true"
   printf '%s\n' "${SERVER} lease filesystem exhausted" > "$FAULT_MARKER"
 }
 
