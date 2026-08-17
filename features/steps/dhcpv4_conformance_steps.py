@@ -22,6 +22,7 @@ from dhcpv4_support import (
     mac_bytes,
     option_bytes,
     raw_dhcp_option,
+    raw_dhcp_option_fragments,
     require_scapy_v4,
     start_dhcp_sniffer,
 )
@@ -55,6 +56,8 @@ PERSISTENT_MAC = "02:00:00:fe:00:01"
 PERSISTENT_CLIENT_ID = b"\xffacceptance-persistent-client"
 PARAMETER_REQUEST_LIST = [1, 3, 6, 15, 51, 58, 59]
 RELAY_OPTION = b"\x01\x08circuit1\x02\x08remote01"
+RFC3396_LONG_OPTION_CODE = 224
+RFC3396_LONG_OPTION = b"0123456789abcdef" * 20
 RELOADED_CLASS_DOMAIN = os.getenv(
     "TEST_RELOADED_CLASS_DOMAIN", "reloaded.acceptance.test"
 )
@@ -601,14 +604,20 @@ def step_relay_address(context):
     _state(context)["relay_ip"] = address
 
 
-def _relayed_packet(mac, xid, message_type, *, requested=None, server_id=None):
+def _relayed_packet(
+    mac, xid, message_type, *, requested=None, server_id=None, force_overload=False
+):
     options = [("message-type", message_type)]
     if server_id is not None:
         options.append(("server_id", server_id))
     if requested is not None:
         options.append(("requested_addr", requested))
+    parameter_request_list = list(PARAMETER_REQUEST_LIST)
+    if force_overload:
+        parameter_request_list.append(RFC3396_LONG_OPTION_CODE)
+        options.append(("max_dhcp_size", 576))
     options.extend([
-        ("param_req_list", PARAMETER_REQUEST_LIST),
+        ("param_req_list", parameter_request_list),
         (82, RELAY_OPTION),
         "end",
     ])
@@ -731,6 +740,69 @@ def step_no_invented_relay_info(context):
             packet, 82, ("relay_agent_information", "relay_agent_Information")
         )
         assert value is None, f"{label} invented Relay Agent Information"
+
+
+@when("the relay completes DORA with an oversized requested option")
+def step_relay_overload_dora(context):
+    mac = _new_mac()
+    xid = _new_xid()
+    discover = _relayed_packet(mac, xid, "discover", force_overload=True)
+    responses = _capture_packets([discover], xid, {2, 5, 6}, mac=mac)
+    offers = [packet for packet in responses if _message_type(packet) == 2]
+    assert offers, "Overload relay DHCPDISCOVER received no DHCPOFFER"
+    offer = offers[0]
+
+    request = _relayed_packet(
+        mac,
+        xid,
+        "request",
+        requested=offer[BOOTP].yiaddr,
+        server_id=dhcp_option(offer, "server_id"),
+        force_overload=True,
+    )
+    responses = _capture_packets([request], xid, {5, 6}, mac=mac)
+    assert not [packet for packet in responses if _message_type(packet) == 6]
+    acks = [packet for packet in responses if _message_type(packet) == 5]
+    assert acks, "Overload relay DHCPREQUEST received no DHCPACK"
+    state = _state(context)
+    state["relay_overload_responses"] = [offer, acks[0]]
+    state["active"].append({
+        "mac": mac,
+        "xid": xid,
+        "ip": offer[BOOTP].yiaddr,
+        "offer": offer,
+        "acks": acks,
+        "client_id": None,
+    })
+    _ensure_cleanup(context)
+
+
+@then("both relayed responses preserve the oversized option fragments")
+def step_relay_long_option_is_preserved(context):
+    responses = _state(context).get("relay_overload_responses", [])
+    assert len(responses) == 2, "Missing overloaded relay OFFER/ACK responses"
+    for label, packet in zip(("DHCPOFFER", "DHCPACK"), responses):
+        fragments = raw_dhcp_option_fragments(packet, RFC3396_LONG_OPTION_CODE)
+        actual = b"".join(value for _, value in fragments)
+        assert actual == RFC3396_LONG_OPTION, (
+            f"{label} did not reconstruct the configured oversized option: "
+            f"{[(area, len(value)) for area, value in fragments]}"
+        )
+
+
+@then("both relayed responses keep Relay Agent Information in the main option area")
+def step_relay_info_not_overloaded(context):
+    for label, packet in zip(
+        ("DHCPOFFER", "DHCPACK"),
+        _state(context).get("relay_overload_responses", []),
+    ):
+        fragments = raw_dhcp_option_fragments(packet, 82)
+        assert fragments, f"{label} omitted Relay Agent Information"
+        assert b"".join(value for _, value in fragments) == RELAY_OPTION
+        assert all(area == "options" for area, _ in fragments), (
+            f"{label} placed Relay Agent Information in overloaded areas: "
+            f"{[area for area, _ in fragments]}"
+        )
 
 
 def _write_persistent_state(lease):

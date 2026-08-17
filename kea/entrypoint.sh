@@ -116,19 +116,25 @@ RFC3442_ROUTES="00:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe:19:c6:33:64:80:${N1_HEX}:${N
 KEA_VERSION=$(kea-dhcp4 -v 2>/dev/null | head -n 1)
 case "$KEA_VERSION" in
     3.*)
-        RFC3442_OPTION_DEF=""
+        RFC3442_OPTION_DEF_ITEM=""
         ;;
     *)
-        RFC3442_OPTION_DEF='    "option-def": [
+        RFC3442_OPTION_DEF_ITEM=',
       {
         "name": "classless-static-route",
         "code": 121,
         "type": "binary",
         "space": "dhcp4"
-      }
-    ],'
+      }'
         ;;
 esac
+
+RFC3396_LONG_OPTION=""
+_rfc3396_count=0
+while [ "$_rfc3396_count" -lt 20 ]; do
+    RFC3396_LONG_OPTION="${RFC3396_LONG_OPTION}0123456789abcdef"
+    _rfc3396_count=$(( _rfc3396_count + 1 ))
+done
 
 PING_CHECK_HOOKS='[]'
 if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ]; then
@@ -171,7 +177,14 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
     },
     "ddns-send-updates": true,
     "ddns-qualifying-suffix": "dhcp-acceptance.test",
-$RFC3442_OPTION_DEF
+    "option-def": [
+      {
+        "name": "rfc3396-long-option",
+        "code": 224,
+        "type": "string",
+        "space": "dhcp4"
+      }$RFC3442_OPTION_DEF_ITEM
+    ],
     "client-classes": [
       {
         "name": "acceptance-class",
@@ -205,13 +218,14 @@ $RFC3442_OPTION_DEF
         "option-data": [
           { "name": "routers", "data": "${NET3}.1" },
           { "name": "subnet-mask", "data": "$NETMASK" },
-          { "name": "domain-name-servers", "data": "8.8.8.8" }$PRIMARY_OVERLAP_OPTION,
+          { "name": "domain-name-servers", "data": "8.8.8.8, 1.1.1.1" }$PRIMARY_OVERLAP_OPTION,
           {
             "name": "classless-static-route",
             "data": "$RFC3442_ROUTES",
             "csv-format": false
           },
-          { "name": "v6-only-preferred", "data": "$RFC8925_WAIT" }
+          { "name": "v6-only-preferred", "data": "$RFC8925_WAIT" },
+          { "name": "rfc3396-long-option", "data": "$RFC3396_LONG_OPTION" }
         ]
       },
       {
@@ -230,7 +244,8 @@ $RFC3442_OPTION_DEF
         "pools": [ { "pool": "${RELAY_NET3}.100 - ${RELAY_NET3}.120" } ],
         "option-data": [
           { "name": "routers", "data": "${RELAY_NET3}.1" },
-          { "name": "domain-name-servers", "data": "8.8.8.8" }
+          { "name": "domain-name-servers", "data": "8.8.8.8" },
+          { "name": "rfc3396-long-option", "data": "$RFC3396_LONG_OPTION" }
         ]
       }$OVERLAP_SUBNET_AFTER
     ],

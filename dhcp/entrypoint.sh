@@ -112,6 +112,13 @@ if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ]; then
 ping-timeout $DHCPV4_PING_TIMEOUT;"
 fi
 
+RFC3396_LONG_OPTION=""
+_rfc3396_count=0
+while [ "$_rfc3396_count" -lt 20 ]; do
+    RFC3396_LONG_OPTION="${RFC3396_LONG_OPTION}0123456789abcdef"
+    _rfc3396_count=$(( _rfc3396_count + 1 ))
+done
+
 # Give dhcpd a local address on the alternate subnet so it can serve that pool
 # and emit a valid server identifier for RFC 3011 selection tests.
 ip addr add "${ALT_SERVER_IP}/${ALT_PREFIX}" dev "$IFACE" >/dev/null 2>&1 || true
@@ -136,6 +143,8 @@ option dhcp-rebinding-time 105;
 # RFC 3442 and RFC 8925 options are scoped to the primary test subnet below.
 option classless-static-routes code 121 = array of unsigned integer 8;
 option v6-only-preferred code 108 = unsigned integer 32;
+option rfc3396-long-option code 224 = text;
+option rfc3396-long-option "$RFC3396_LONG_OPTION";
 
 class "acceptance-class" {
     match if option vendor-class-identifier = "$DHCPV4_CLASS_NAME";
@@ -164,7 +173,7 @@ subnet $NET netmask $NETMASK {
     range ${NET3}.${DHCPV4_POOL_START_OFFSET} ${NET3}.${DHCPV4_POOL_END_OFFSET};
     option routers ${NET3}.1;
     option subnet-mask $NETMASK;
-    option domain-name-servers 8.8.8.8;
+    option domain-name-servers 8.8.8.8, 1.1.1.1;
     option classless-static-routes
         0, $n1, $n2, $n3, 254,
         25, 198, 51, 100, 128, $n1, $n2, $n3, 254,
