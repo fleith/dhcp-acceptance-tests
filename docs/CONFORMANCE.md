@@ -107,11 +107,19 @@ belong in a target service's deployment qualification.
 
 ## Claim boundary and RFC traceability
 
-The feature files give scenario-level traceability for RFC 2131, 2132, 3011,
-3046, 3396, 3442, 4361, 4702, 4704, 6842, 8925, and 9915. They do not yet form
-an exhaustive paragraph-by-paragraph inventory of every applicable normative
-MUST and SHOULD in those RFCs. `GAP-RFC-TRACEABILITY` therefore remains
-`partial` in the profile.
+The maintained [RFC MUST/SHOULD traceability matrix](RFC_REQUIREMENTS.md) maps
+82 acceptance-relevant normative server requirements across RFC 2131, 2132,
+3011, 3046, 3396, 3442, 4361, 4702, 4704, 6842, 8925, and 9915 to exact feature
+scenarios or an explicit gap. Its CSV source is
+[`rfc-requirements.csv`](rfc-requirements.csv), and profile validation checks
+that every evidence path and scenario name remains valid.
+
+The matrix is deliberately honest about strength: a successful exchange is
+only `partial` when it does not observe the whole normative clause, and
+capability-gated requirements remain `conditional` until executed for the
+target product. Open `gap`, `partial`, and unexecuted `conditional` rows mean
+`GAP-RFC-TRACEABILITY` remains `partial`; the matrix makes the remaining work
+enumerable rather than implying that scenario-level RFC labels are complete.
 
 A release can accurately say that it **passes this repository's named DHCP
 acceptance profile** after all applicable required, focused, lifecycle, safety,

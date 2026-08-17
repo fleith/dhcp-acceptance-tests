@@ -174,8 +174,13 @@
       "title": "Requirement-level mapping of applicable RFC MUST and SHOULD statements",
       "status": "partial",
       "mode": "documentation",
-      "evidence": ["docs/CONFORMANCE.md"],
-      "tags": []
+      "evidence": [
+        "docs/CONFORMANCE.md",
+        "docs/RFC_REQUIREMENTS.md",
+        "docs/rfc-requirements.csv"
+      ],
+      "tags": [],
+      "notes": "The maintained matrix currently records covered, partial, conditional, and gap rows; full compliance remains blocked by every unresolved or unexecuted row."
     }
   ]
 }
