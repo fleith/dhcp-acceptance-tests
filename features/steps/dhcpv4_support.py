@@ -79,6 +79,57 @@ def option_bytes(value):
     return bytes(value)
 
 
+def _raw_option_tlvs(data):
+    """Decode one RFC 2132 option area without relying on Scapy names."""
+    parsed = []
+    offset = 0
+    while offset < len(data):
+        code = data[offset]
+        offset += 1
+        if code == 0:
+            continue
+        if code == 255:
+            break
+        if offset >= len(data):
+            break
+        length = data[offset]
+        offset += 1
+        end = offset + length
+        if end > len(data):
+            break
+        parsed.append((code, data[offset:end]))
+        offset = end
+    return parsed
+
+
+def raw_dhcp_option_areas(packet):
+    """Return RFC 3396 aggregate option areas in options/file/sname order."""
+    if not packet or not packet.haslayer(BOOTP):
+        return []
+
+    main = bytes(packet[BOOTP].payload)
+    if main.startswith(b"\x63\x82\x53\x63"):
+        main = main[4:]
+    areas = [("options", _raw_option_tlvs(main))]
+    overload_values = [value for code, value in areas[0][1] if code == 52]
+    overload = overload_values[0][0] if overload_values and overload_values[0] else 0
+    if overload & 1:
+        areas.append(("file", _raw_option_tlvs(bytes(packet[BOOTP].file))))
+    if overload & 2:
+        areas.append(("sname", _raw_option_tlvs(bytes(packet[BOOTP].sname))))
+    return areas
+
+
+def raw_dhcp_option_fragments(packet, code):
+    """Return (area, value) fragments for a numeric option in aggregate order."""
+    return [
+        (area, value)
+        for area, options in raw_dhcp_option_areas(packet)
+        for option_code, value in options
+        if option_code == code
+    ]
+
+
 def assert_dhcp_option(packet, option_name, message_type="DHCPACK"):
     options = dhcp_options(packet)
     assert option_name in options, (

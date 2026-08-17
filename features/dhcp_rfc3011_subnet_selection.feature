@@ -8,6 +8,12 @@ Feature: RFC 3011 Subnet Selection Option
     Then the client receives a DHCPOFFER with a valid IP address in the subnet
     And a DHCPACK finalizes the lease
 
+  @negative @must_gap @kea_rfc3011_default_divergence
+  Scenario: Subnet Selection support is disabled by default
+    Given the DHCP server is running
+    When a client sends a DHCPDISCOVER with Subnet Selection option for the alternate served subnet
+    Then default-disabled Subnet Selection is ignored without an echo
+
   @kea
   Scenario: Server selects the alternate served subnet requested by Subnet Selection option
     Given the DHCP server is running

@@ -113,7 +113,9 @@ that omits the mandatory Relay Message option. CI runs that robustness probe in
 dedicated expected-divergence rows and excludes it only from the corresponding
 full Kea 3.x IPv6 rows, allowing every other IPv6 scenario to finish.
 
-Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet.
+Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet. The default-disabled security test passes on ISC; Kea 2.2 instead honors Option 118 without an explicit enable switch and is recorded as a reference-backend divergence.
+
+The strict unknown-client INIT-REBOOT test remains enabled for external target services. ISC DHCP 4.4.1 ACKs the unused same-subnet address and Kea 2.2 NAKs it, rather than remaining silent as RFC 2131 requires, so only those named reference backends skip the assertion. ISC DHCP 4.4.1 similarly retains RFC 2131's historical omission of Client Identifier in replies; Kea and external targets run the RFC 6842 byte-for-byte echo assertion.
 
 ### Direct Docker Compose runs (advanced)
 
@@ -191,14 +193,14 @@ RFC 4361, RFC 4704, and RFC 8925.
 - **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM, NAK/DECLINE handling, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate.
 - **RFC 2131 pool capacity**: a dedicated bounded run exhausts the DHCPv4 pool, verifies that an additional client receives no offer, releases one lease, and proves the waiting client can acquire that address.
 - **RFC 2132**: required network options and T1/T2 lease timer validation.
-- **RFC 3011**: Subnet Selection Option (option 118) acceptance on ISC and Kea, plus alternate-subnet selection path on Kea in the multi-subnet Docker topology.
-- **RFC 3046**: relay-agent-information (Option 82) request acceptance path.
-- **RFC 3396**: concatenated option fragment acceptance path.
+- **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path on Kea in the multi-subnet Docker topology.
+- **RFC 3046**: Relay Agent Information (Option 82) echo, byte preservation, omission for ordinary clients, and raw validation that relay metadata never moves into overloaded BOOTP fields.
+- **RFC 3396**: concatenated request-fragment acceptance plus exact reconstruction of a 320-octet response option split into sequential fragments.
 - **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, and unusual parameter request lists.
 - **RFC 4361**: node-specific DHCPv4 client identifiers, stable identity across hardware changes, IAID/DUID isolation, and malformed identifier recovery.
 - **RFC 4702**: Client FQDN option (Option 81) negotiation - server echoes the option in its DHCPACK.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation. Kea runs the positive negotiation scenarios; ISC runs only the universal omission checks in this fixture. A tagged, default-excluded known divergence documents that Kea 2.2 returns FQDN without an ORO request.
-- **RFC 6842**: client-identifier based lease stability across different hardware addresses. The normative response echo and omission rules are now explicitly tracked as open matrix gaps rather than claimed as covered.
+- **RFC 6842**: client-identifier based lease stability across hardware-address changes, byte-for-byte response echo when supplied, and response omission when absent. ISC DHCP 4.4.1's legacy reply omission is recorded as a backend-specific divergence.
 - **RFC 8925**: requested IPv6-Only Preferred option delivery, timer encoding, deliberate IPv4 fallback processing, request-list stability, and subnet/client omission behavior.
 - **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. Authenticated server-initiated Reconfigure remains outside the fixture's claims. IA_PD and these lifecycle paths deepen existing RFC coverage rather than adding another RFC to the count.
 

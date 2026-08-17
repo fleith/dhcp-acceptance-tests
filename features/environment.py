@@ -54,6 +54,18 @@ def before_scenario(context, scenario):
         scenario.skip(f"Scenario requires ISC DHCP backend; current backend is {server_impl}.")
         return
 
+    reference_divergences = {
+        'reference_init_reboot_divergence': {'isc', 'isc-dhcpd', 'kea'},
+        'isc_rfc6842_divergence': {'isc', 'isc-dhcpd'},
+        'kea_rfc3011_default_divergence': {'kea'},
+    }
+    for tag, implementations in reference_divergences.items():
+        if tag in scenario.tags and server_impl in implementations:
+            scenario.skip(
+                f"Known {server_impl} reference-backend divergence tracked by @{tag}."
+            )
+            return
+
     capabilities = _capabilities()
     scenario_tags = getattr(scenario, 'effective_tags', scenario.tags)
     required_capabilities = {

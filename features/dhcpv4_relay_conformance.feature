@@ -17,3 +17,10 @@ Feature: DHCPv4 server behavior behind a relay agent
     Given the DHCP server is running
     When an ordinary DHCPv4 client completes DORA without Relay Agent Information
     Then neither server response contains Relay Agent Information
+
+  @must_gap
+  Scenario: Relay metadata never moves into overloaded BOOTP fields
+    Given a DHCPv4 relay address exists on the alternate served subnet
+    When the relay completes DORA with an oversized requested option
+    Then both relayed responses preserve the oversized option fragments
+    And both relayed responses keep Relay Agent Information in the main option area

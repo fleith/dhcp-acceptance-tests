@@ -18,20 +18,20 @@ requirement. Product-specific applicability review is still required.
 
 | Requirements | Covered | Partial | Conditional | Gap | Excluded |
 |---:|---:|---:|---:|---:|---:|
-| 82 | 24 | 33 | 2 | 23 | 0 |
+| 82 | 29 | 34 | 2 | 17 | 0 |
 
 | RFC | Title | Requirements | Covered | Partial | Conditional | Gap | Excluded |
 |---:|---|---:|---:|---:|---:|---:|---:|
-| [2131](https://www.rfc-editor.org/rfc/rfc2131.html) | Dynamic Host Configuration Protocol | 12 | 7 | 3 | 0 | 2 | 0 |
+| [2131](https://www.rfc-editor.org/rfc/rfc2131.html) | Dynamic Host Configuration Protocol | 12 | 7 | 4 | 0 | 1 | 0 |
 | [2132](https://www.rfc-editor.org/rfc/rfc2132.html) | DHCP Options and BOOTP Vendor Extensions | 4 | 1 | 3 | 0 | 0 | 0 |
-| [3011](https://www.rfc-editor.org/rfc/rfc3011.html) | IPv4 Subnet Selection Option | 4 | 0 | 3 | 0 | 1 | 0 |
-| [3046](https://www.rfc-editor.org/rfc/rfc3046.html) | DHCP Relay Agent Information Option | 5 | 1 | 2 | 0 | 2 | 0 |
-| [3396](https://www.rfc-editor.org/rfc/rfc3396.html) | Encoding Long DHCP Options | 3 | 0 | 2 | 0 | 1 | 0 |
+| [3011](https://www.rfc-editor.org/rfc/rfc3011.html) | IPv4 Subnet Selection Option | 4 | 1 | 3 | 0 | 0 | 0 |
+| [3046](https://www.rfc-editor.org/rfc/rfc3046.html) | DHCP Relay Agent Information Option | 5 | 2 | 2 | 0 | 1 | 0 |
+| [3396](https://www.rfc-editor.org/rfc/rfc3396.html) | Encoding Long DHCP Options | 3 | 1 | 2 | 0 | 0 | 0 |
 | [3442](https://www.rfc-editor.org/rfc/rfc3442.html) | Classless Static Route Option | 3 | 1 | 2 | 0 | 0 | 0 |
 | [4361](https://www.rfc-editor.org/rfc/rfc4361.html) | Node-specific Client Identifiers for DHCPv4 | 1 | 1 | 0 | 0 | 0 | 0 |
 | [4702](https://www.rfc-editor.org/rfc/rfc4702.html) | DHCP Client FQDN Option | 6 | 0 | 3 | 0 | 3 | 0 |
 | [4704](https://www.rfc-editor.org/rfc/rfc4704.html) | DHCPv6 Client FQDN Option | 6 | 1 | 4 | 1 | 0 | 0 |
-| [6842](https://www.rfc-editor.org/rfc/rfc6842.html) | Client Identifier Option in DHCP Server Replies | 2 | 0 | 0 | 0 | 2 | 0 |
+| [6842](https://www.rfc-editor.org/rfc/rfc6842.html) | Client Identifier Option in DHCP Server Replies | 2 | 2 | 0 | 0 | 0 | 0 |
 | [8925](https://www.rfc-editor.org/rfc/rfc8925.html) | IPv6-Only Preferred Option for DHCPv4 | 9 | 4 | 3 | 0 | 2 | 0 |
 | [9915](https://www.rfc-editor.org/rfc/rfc9915.html) | Dynamic Host Configuration Protocol for IPv6 | 27 | 8 | 8 | 1 | 10 | 0 |
 
@@ -44,7 +44,7 @@ requirement. Product-specific applicability review is still required.
 | `RFC2131-4.3.1-SHOULD-01` | [4.3.1](https://www.rfc-editor.org/rfc/rfc2131.html#section-4.3.1) | SHOULD | **covered** | Choose an available address from the correct client subnet when processing DHCPDISCOVER. | [Client obtains a new DHCP lease](../features/dhcp_lease.feature)<br>[A relayed client completes DORA on the giaddr-selected subnet](../features/dhcpv4_relay_conformance.feature) |
 | `RFC2131-4.3.2-SHOULD-01` | [4.3.2](https://www.rfc-editor.org/rfc/rfc2131.html#section-4.3.2) | SHOULD | **covered** | Keep DHCPACK configuration consistent with the selected DHCPOFFER. | [Direct client receives a consistent lease from the selected scope](../features/dhcp_overlapping_subnet_leases.feature)<br>[Server returns configured classless routes in OFFER and ACK](../features/dhcp_rfc3442_classless_routes.feature)<br>The scenarios compare the offered address and scope-specific options through ACK. |
 | `RFC2131-4.3.2-SHOULD-02` | [4.3.2](https://www.rfc-editor.org/rfc/rfc2131.html#section-4.3.2) | SHOULD | **covered** | Send DHCPNAK when an INIT-REBOOT address is inappropriate for the client link. | [Server sends DHCPNAK when rebooted client requests address outside the server's subnet](../features/dhcp_init_reboot.feature) |
-| `RFC2131-4.3.2-MUST-01` | [4.3.2](https://www.rfc-editor.org/rfc/rfc2131.html#section-4.3.2) | MUST | **gap** | Remain silent when an INIT-REBOOT request is on the correct network but the server has no binding record. | No scenario distinguishes an unknown same-subnet binding from a known or off-subnet binding. |
+| `RFC2131-4.3.2-MUST-01` | [4.3.2](https://www.rfc-editor.org/rfc/rfc2131.html#section-4.3.2) | MUST | **partial** | Remain silent when an INIT-REBOOT request is on the correct network but the server has no binding record. | [Unknown client receives no answer for a same-subnet INIT-REBOOT address](../features/dhcp_init_reboot.feature)<br>The strict assertion runs for target services. ISC DHCP 4.4.1 ACKs and Kea 2.2 NAKs this request, so those reference backends are explicitly skipped as known divergences. |
 | `RFC2131-4.3.2-SHOULD-03` | [4.3.2](https://www.rfc-editor.org/rfc/rfc2131.html#section-4.3.2) | SHOULD | **covered** | Acknowledge valid renewal and rebinding requests for an active binding. | [Client renews an active lease](../features/dhcp_renewal.feature)<br>[Client rebinds successfully without specifying server identifier](../features/dhcp_renewal.feature) |
 | `RFC2131-4.3.3-MUST-01` | [4.3.3](https://www.rfc-editor.org/rfc/rfc2131.html#section-4.3.3) | MUST | **covered** | Mark an address unavailable after receiving DHCPDECLINE. | [Server does not re-offer an address the client declined](../features/dhcp_nak_decline.feature)<br>The next offer proves quarantine of the declined address. |
 | `RFC2131-4.3.3-SHOULD-01` | [4.3.3](https://www.rfc-editor.org/rfc/rfc2131.html#section-4.3.3) | SHOULD | **gap** | Notify the local administrator about a possible address-conflict configuration problem. | The suite verifies quarantine but does not inspect administrative notification or logs. |
@@ -68,7 +68,7 @@ requirement. Product-specific applicability review is still required.
 | `RFC3011-2-MUST-01` | [2](https://www.rfc-editor.org/rfc/rfc3011.html#section-2) | MUST | **partial** | Allocate from the selected subnet or the link on which the selected subnet is configured when option 118 is supported. | [Server selects the alternate served subnet requested by Subnet Selection option](../features/dhcp_rfc3011_subnet_selection.feature)<br>The alternate-subnet assertion currently runs on Kea only. |
 | `RFC3011-2-MUST-02` | [2](https://www.rfc-editor.org/rfc/rfc3011.html#section-2) | MUST | **partial** | Return an identical Subnet Selection option to a client that supplied it. | [Server still offers a lease when DISCOVER carries Subnet Selection option](../features/dhcp_rfc3011_subnet_selection.feature)<br>The exchange succeeds but the response does not assert byte-for-byte option 118 echo. |
 | `RFC3011-2-MUST-NOT-01` | [2](https://www.rfc-editor.org/rfc/rfc3011.html#section-2) | MUST NOT | **partial** | When configured to support option 118 do not offer an address outside the requested subnet or segment. | [Server selects the alternate served subnet requested by Subnet Selection option](../features/dhcp_rfc3011_subnet_selection.feature)<br>Covered on the Kea alternate-subnet topology. |
-| `RFC3011-6-MUST-01` | [6](https://www.rfc-editor.org/rfc/rfc3011.html#section-6) | MUST | **gap** | Disable Subnet Selection support by default and require explicit configuration to enable it. | The fixtures enable the option but do not test the default-disabled security posture. |
+| `RFC3011-6-MUST-01` | [6](https://www.rfc-editor.org/rfc/rfc3011.html#section-6) | MUST | **covered** | Disable Subnet Selection support by default and require explicit configuration to enable it. | [Subnet Selection support is disabled by default](../features/dhcp_rfc3011_subnet_selection.feature)<br>ISC DHCP ignores option 118 and does not echo it in the default fixture. Kea 2.2 honors it without an explicit enable switch and is skipped as a known reference divergence. |
 
 ## RFC 3046: DHCP Relay Agent Information Option
 
@@ -76,7 +76,7 @@ requirement. Product-specific applicability review is still required.
 |---|---:|---|---|---|---|
 | `RFC3046-2.2-MUST-01` | [2.2](https://www.rfc-editor.org/rfc/rfc3046.html#section-2.2) | MUST | **covered** | Echo the entire Relay Agent Information option in every reply when claiming option 82 support. | [A relayed client completes DORA on the giaddr-selected subnet](../features/dhcpv4_relay_conformance.feature)<br>OFFER and ACK are compared byte-for-byte with circuit and remote identifiers. |
 | `RFC3046-2.2-SHOULD-01` | [2.2](https://www.rfc-editor.org/rfc/rfc3046.html#section-2.2) | SHOULD | **gap** | Place the echoed Relay Agent Information option last in the response option area. | The suite validates content but not option ordering. |
-| `RFC3046-2.2-MUST-NOT-01` | [2.2](https://www.rfc-editor.org/rfc/rfc3046.html#section-2.2) | MUST NOT | **gap** | Do not put echoed Relay Agent Information into overloaded sname or file fields. | The suite does not force option overload or inspect these fields for option 82. |
+| `RFC3046-2.2-MUST-NOT-01` | [2.2](https://www.rfc-editor.org/rfc/rfc3046.html#section-2.2) | MUST NOT | **covered** | Do not put echoed Relay Agent Information into overloaded sname or file fields. | [Relay metadata never moves into overloaded BOOTP fields](../features/dhcpv4_relay_conformance.feature)<br>The test parses the main, file, and sname option areas under oversized-response pressure and requires every option 82 fragment to remain in the main area. |
 | `RFC3046-2.2-SHOULD-02` | [2.2](https://www.rfc-editor.org/rfc/rfc3046.html#section-2.2) | SHOULD | **partial** | Handle Relay Agent Information in unicast messages but do not assume it is always present. | [Relay metadata is not invented for an ordinary client](../features/dhcpv4_relay_conformance.feature)<br>Absence is covered; a true unicast request containing option 82 is not. |
 | `RFC3046-3.1-SHOULD-01` | [3.1](https://www.rfc-editor.org/rfc/rfc3046.html#section-3.1) | SHOULD | **partial** | Treat Circuit ID as opaque and base policy on exact value matching rather than internal parsing. | [A relayed client completes DORA on the giaddr-selected subnet](../features/dhcpv4_relay_conformance.feature)<br>Exact echo is covered but policy selection based on opaque values is not. |
 
@@ -85,7 +85,7 @@ requirement. Product-specific applicability review is still required.
 | ID | Section | Level | Status | Requirement | Evidence / rationale |
 |---|---:|---|---|---|---|
 | `RFC3396-4-MUST-01` | [4](https://www.rfc-editor.org/rfc/rfc3396.html#section-4) | MUST | **partial** | Concatenate multiple occurrences of one option code in aggregate-buffer order when decoding. | [Server accepts a DHCPDISCOVER with concatenated host-name fragments](../features/dhcp_rfc3396_option_concat.feature)<br>The valid exchange proves acceptance but does not expose the decoded host name used by server policy. |
-| `RFC3396-6-MUST-01` | [6](https://www.rfc-editor.org/rfc/rfc3396.html#section-6) | MUST | **gap** | Store split portions sequentially with identical option codes and lengths totaling the original data. | No server-response option longer than 255 octets is configured and decoded. |
+| `RFC3396-6-MUST-01` | [6](https://www.rfc-editor.org/rfc/rfc3396.html#section-6) | MUST | **covered** | Store split portions sequentially with identical option codes and lengths totaling the original data. | [Server splits and preserves a configured option longer than 255 octets](../features/dhcp_rfc3396_option_concat.feature)<br>OFFER and ACK fragments are decoded in aggregate-buffer order and must reconstruct the exact configured 320-octet value. |
 | `RFC3396-7-MUST-01` | [7](https://www.rfc-editor.org/rfc/rfc3396.html#section-7) | MUST | **partial** | Reassemble split option portions into one object and not treat fragments as independent values. | [Server accepts a DHCPDISCOVER with concatenated host-name fragments](../features/dhcp_rfc3396_option_concat.feature)<br>Acceptance is covered but semantic use of the reassembled value is not asserted. |
 
 ## RFC 3442: Classless Static Route Option
@@ -128,8 +128,8 @@ requirement. Product-specific applicability review is still required.
 
 | ID | Section | Level | Status | Requirement | Evidence / rationale |
 |---|---:|---|---|---|---|
-| `RFC6842-3-MUST-01` | [3](https://www.rfc-editor.org/rfc/rfc6842.html#section-3) | MUST | **gap** | Return an unaltered Client Identifier option in a response when the client supplied it. | The current RFC 6842 scenario checks lease stability across chaddr changes but never inspects response option 61. |
-| `RFC6842-3-MUST-NOT-01` | [3](https://www.rfc-editor.org/rfc/rfc6842.html#section-3) | MUST NOT | **gap** | Do not add Client Identifier to a response when the client did not supply it. | No RFC 6842 omission assertion exists. |
+| `RFC6842-3-MUST-01` | [3](https://www.rfc-editor.org/rfc/rfc6842.html#section-3) | MUST | **covered** | Return an unaltered Client Identifier option in a response when the client supplied it. | [Server returns the supplied client identifier unchanged](../features/dhcp_rfc6842_client_identifier.feature)<br>The test compares exact option 61 bytes in OFFER and ACK. Kea 2.2 passes; ISC DHCP 4.4.1 is explicitly skipped because it retains the older RFC 2131 omission behavior. |
+| `RFC6842-3-MUST-NOT-01` | [3](https://www.rfc-editor.org/rfc/rfc6842.html#section-3) | MUST NOT | **covered** | Do not add Client Identifier to a response when the client did not supply it. | [Server omits client identifier when the client omits it](../features/dhcp_rfc6842_client_identifier.feature)<br>OFFER and ACK are both inspected for absence of option 61. |
 
 ## RFC 8925: IPv6-Only Preferred Option for DHCPv4
 

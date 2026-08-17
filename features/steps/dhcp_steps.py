@@ -10,7 +10,9 @@ from dhcpv4_support import (
     dhcp_options as _support_get_dhcp_options,
     dhcp_packets as _support_dhcp_packets,
     mac_bytes as _support_mac_bytes,
+    option_bytes as _support_option_bytes,
     raw_dhcp_option as _support_get_raw_option,
+    raw_dhcp_option_fragments as _support_get_raw_fragments,
     start_dhcp_sniffer as _support_start_dhcp_sniffer,
 )
 
@@ -40,6 +42,8 @@ CLIENT_MAC = os.getenv("TEST_CLIENT_MAC", "02:00:00:00:00:01")
 INTERFACE = os.getenv("TEST_INTERFACE", "eth0")
 SUBNET = os.getenv("TEST_SUBNET", "192.168.56.0/24")
 LEASE_TIME = float(os.getenv("TEST_LEASE_TIME", "120"))
+RFC3396_LONG_OPTION_CODE = 224
+RFC3396_LONG_OPTION = b"0123456789abcdef" * 20
 
 context_storage = {}
 
@@ -239,6 +243,7 @@ def step_then_receive_offer(context):
     assert ipaddress.ip_address(offered_ip) in ipaddress.ip_network(SUBNET), \
         f"Offered IP {offered_ip} not in subnet {SUBNET}"
     context_storage['offered_ip'] = offered_ip
+    context_storage['offer_packet'] = offer_pkts[0]
 
 
 @then('a DHCPACK finalizes the lease')
@@ -568,6 +573,48 @@ def step_when_reboot_wrong_subnet(context):
     context_storage['nak_sniffer'] = sniffer
 
 
+@when('an unknown client sends INIT-REBOOT for an unused same-subnet pool address')
+def step_when_unknown_init_reboot(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    rb = os.urandom(3)
+    unknown_mac = f"02:00:01:{rb[0]:02x}:{rb[1]:02x}:{rb[2]:02x}"
+    xid = int.from_bytes(os.urandom(4), 'big')
+    subnet = ipaddress.ip_network(SUBNET)
+    pool_end_offset = int(os.getenv("DHCPV4_POOL_END_OFFSET", "200"))
+    requested = str(subnet.network_address + pool_end_offset)
+    request = (
+        Ether(src=unknown_mac, dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(unknown_mac), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'request'),
+            ('requested_addr', requested),
+            ('end'),
+        ])
+    )
+    sniffer = _start_dhcp_sniffer(timeout=3)
+    sendp(request, iface=INTERFACE, verbose=False)
+    sniffer.join()
+    context_storage['unknown_init_reboot_responses'] = [
+        packet for packet in (sniffer.results or [])
+        if packet.haslayer(BOOTP)
+        and packet.haslayer(DHCP)
+        and packet[BOOTP].xid == xid
+        and _get_dhcp_options_dict(packet).get('message-type') in {5, 6}
+    ]
+
+
+@then('the unknown INIT-REBOOT transaction receives no DHCPACK or DHCPNAK')
+def step_then_unknown_init_reboot_silent(context):
+    responses = context_storage.get('unknown_init_reboot_responses', [])
+    assert not responses, (
+        "Unknown same-subnet INIT-REBOOT received server decision(s): "
+        f"{[_get_dhcp_options_dict(packet).get('message-type') for packet in responses]}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # DHCPINFORM (RFC 2131 §3.5)
 # ---------------------------------------------------------------------------
@@ -809,6 +856,24 @@ def step_then_receive_offer_in_selected_subnet(context):
     context_storage['rfc3011_offer_server_id'] = _get_dhcp_option(offer, 'server_id')
 
 
+@then('default-disabled Subnet Selection is ignored without an echo')
+def step_then_default_subnet_selection_ignored(context):
+    xid = context_storage.get('transaction_id')
+    sniffer = context_storage.get('discover_sniffer')
+    offers = _dhcp_packets(sniffer, msg_type=2, xid=xid)
+    assert offers, "No DHCPOFFER received for default-disabled RFC 3011 test"
+    offer = offers[0]
+    assert ipaddress.ip_address(offer[BOOTP].yiaddr) in ipaddress.ip_network(SUBNET), (
+        "Default-enabled Subnet Selection changed the allocation scope to "
+        f"{offer[BOOTP].yiaddr}"
+    )
+    echoed = _get_dhcp_raw_option(offer, 118, ('subnet_selection',))
+    assert echoed is None, (
+        "Default-disabled Subnet Selection was echoed as "
+        f"{_support_option_bytes(echoed)!r}"
+    )
+
+
 @then('a DHCPACK finalizes the lease for the selected subnet')
 def step_then_receive_ack_for_selected_subnet(context):
     if Ether is None:
@@ -905,6 +970,78 @@ def step_when_discover_with_concat_hostname(context):
     context_storage['discover_sniffer'] = sniffer
 
 
+@when('a client completes DORA requesting the oversized RFC 3396 option')
+def step_when_dora_with_oversized_option(context):
+    if Ether is None:
+        raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+    mac = _client_mac()
+    xid = int.from_bytes(os.urandom(4), 'big')
+    request_options = [
+        ('max_dhcp_size', 576),
+        ('param_req_list', [RFC3396_LONG_OPTION_CODE]),
+    ]
+    discover = (
+        Ether(src=mac, dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(mac), flags=0x8000, xid=xid) /
+        DHCP(options=[('message-type', 'discover'), *request_options, ('end')])
+    )
+    offer_sniffer = _start_dhcp_sniffer()
+    sendp(discover, iface=INTERFACE, verbose=False)
+    offers = _dhcp_packets(offer_sniffer, msg_type=2, xid=xid, server_id=DHCP_SERVER_IP)
+    assert offers, "No DHCPOFFER for oversized RFC 3396 option"
+    offer = offers[0]
+
+    request = (
+        Ether(src=mac, dst="ff:ff:ff:ff:ff:ff") /
+        IP(src="0.0.0.0", dst="255.255.255.255") /
+        UDP(sport=68, dport=67) /
+        BOOTP(chaddr=_mac_bytes(mac), flags=0x8000, xid=xid) /
+        DHCP(options=[
+            ('message-type', 'request'),
+            ('server_id', _get_dhcp_option(offer, 'server_id') or DHCP_SERVER_IP),
+            ('requested_addr', offer[BOOTP].yiaddr),
+            *request_options,
+            ('end'),
+        ])
+    )
+    ack_sniffer = _start_dhcp_sniffer()
+    sendp(request, iface=INTERFACE, verbose=False)
+    acks = _dhcp_packets(ack_sniffer, msg_type=5, xid=xid, server_id=DHCP_SERVER_IP)
+    assert acks, "No DHCPACK for oversized RFC 3396 option"
+    context_storage['rfc3396_responses'] = [offer, acks[0]]
+
+
+@then('the offer and acknowledgement contain ordered RFC 3396 fragments')
+def step_then_rfc3396_fragments(context):
+    responses = context_storage.get('rfc3396_responses', [])
+    assert len(responses) == 2, "Missing RFC 3396 OFFER/ACK responses"
+    for label, packet in zip(('DHCPOFFER', 'DHCPACK'), responses):
+        fragments = _support_get_raw_fragments(packet, RFC3396_LONG_OPTION_CODE)
+        assert len(fragments) >= 2, (
+            f"{label} did not split {len(RFC3396_LONG_OPTION)}-octet option "
+            f"{RFC3396_LONG_OPTION_CODE}: {fragments!r}"
+        )
+        assert all(0 < len(value) <= 255 for _, value in fragments), (
+            f"{label} contains an invalid RFC 3396 fragment length: "
+            f"{[(area, len(value)) for area, value in fragments]}"
+        )
+
+
+@then('both responses reconstruct the configured oversized option exactly')
+def step_then_rfc3396_reconstructs(context):
+    for label, packet in zip(
+        ('DHCPOFFER', 'DHCPACK'), context_storage.get('rfc3396_responses', [])
+    ):
+        fragments = _support_get_raw_fragments(packet, RFC3396_LONG_OPTION_CODE)
+        actual = b''.join(value for _, value in fragments)
+        assert actual == RFC3396_LONG_OPTION, (
+            f"{label} reconstructed option {RFC3396_LONG_OPTION_CODE} to "
+            f"{len(actual)} unexpected octets"
+        )
+
+
 def _dora_with_client_id(client_id_bytes, mac_addr):
     xid = int.from_bytes(os.urandom(4), 'big')
     discover = (
@@ -943,7 +1080,7 @@ def _dora_with_client_id(client_id_bytes, mac_addr):
     sendp(request, iface=INTERFACE, verbose=False)
     ack_pkts = _dhcp_packets(request_sniffer, msg_type=5, xid=xid, server_id=DHCP_SERVER_IP)
     assert ack_pkts, "No DHCPACK received"
-    return offered_ip
+    return {"ip": offered_ip, "offer": offer_pkts[0], "ack": ack_pkts[0]}
 
 
 @when('a client with a client identifier acquires a lease')
@@ -953,9 +1090,34 @@ def step_when_client_id_acquires_lease(context):
     # Type 255 + opaque bytes: stable identifier independent of hardware address.
     client_id_bytes = b'\xffrfc6842-client-a'
     mac1 = _client_mac()
-    lease_ip = _dora_with_client_id(client_id_bytes, mac1)
+    exchange = _dora_with_client_id(client_id_bytes, mac1)
     context_storage['rfc6842_client_id'] = client_id_bytes
-    context_storage['rfc6842_first_ip'] = lease_ip
+    context_storage['rfc6842_first_ip'] = exchange['ip']
+    context_storage['rfc6842_exchange'] = exchange
+
+
+@then('the offer and acknowledgement echo that client identifier unchanged')
+def step_then_client_id_echoed(context):
+    expected = context_storage.get('rfc6842_client_id')
+    exchange = context_storage.get('rfc6842_exchange') or {}
+    assert expected and exchange, "Missing RFC 6842 client identifier exchange"
+    for label, packet in (('DHCPOFFER', exchange['offer']), ('DHCPACK', exchange['ack'])):
+        actual = _get_dhcp_raw_option(packet, 61, ('client_id',))
+        assert actual is not None, f"{label} omitted the supplied Client Identifier"
+        assert _support_option_bytes(actual) == expected, (
+            f"{label} changed Client Identifier: {_support_option_bytes(actual)!r} != {expected!r}"
+        )
+
+
+@then('the offer and acknowledgement omit the client identifier')
+def step_then_client_id_omitted(context):
+    for label, key in (('DHCPOFFER', 'offer_packet'), ('DHCPACK', 'ack_packet')):
+        packet = context_storage.get(key)
+        assert packet is not None, f"Missing {label} for RFC 6842 omission check"
+        actual = _get_dhcp_raw_option(packet, 61, ('client_id',))
+        assert actual is None, (
+            f"{label} invented Client Identifier {_support_option_bytes(actual)!r}"
+        )
 
 
 @when('the same client identifier is used from a different hardware address')
