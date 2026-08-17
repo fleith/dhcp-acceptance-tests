@@ -198,7 +198,7 @@ RFC 4361, RFC 4704, and RFC 8925.
 - **RFC 4361**: node-specific DHCPv4 client identifiers, stable identity across hardware changes, IAID/DUID isolation, and malformed identifier recovery.
 - **RFC 4702**: Client FQDN option (Option 81) negotiation - server echoes the option in its DHCPACK.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation. Kea runs the positive negotiation scenarios; ISC runs only the universal omission checks in this fixture. A tagged, default-excluded known divergence documents that Kea 2.2 returns FQDN without an ORO request.
-- **RFC 6842**: client-identifier based lease stability across different hardware addresses.
+- **RFC 6842**: client-identifier based lease stability across different hardware addresses. The normative response echo and omission rules are now explicitly tracked as open matrix gaps rather than claimed as covered.
 - **RFC 8925**: requested IPv6-Only Preferred option delivery, timer encoding, deliberate IPv4 fallback processing, request-list stability, and subnet/client omission behavior.
 - **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. Authenticated server-initiated Reconfigure remains outside the fixture's claims. IA_PD and these lifecycle paths deepen existing RFC coverage rather than adding another RFC to the count.
 
@@ -238,6 +238,10 @@ product-specific topology or control-plane adapter. External services may also
 use the storage-fault capability adapter, while ISC DHCP and Kea run the
 bundled isolated storage profile in CI. The machine-readable index is
 [`docs/conformance-profile.json`](docs/conformance-profile.json).
+The statement-level [RFC MUST/SHOULD traceability matrix](docs/RFC_REQUIREMENTS.md)
+maps each inventoried requirement to an exact scenario or explicit gap; its
+machine-readable source is
+[`docs/rfc-requirements.csv`](docs/rfc-requirements.csv).
 
 ## Project structure
 
