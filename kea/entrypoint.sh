@@ -218,7 +218,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
         "option-data": [
           { "name": "routers", "data": "${NET3}.1" },
           { "name": "subnet-mask", "data": "$NETMASK" },
-          { "name": "domain-name-servers", "data": "8.8.8.8" }$PRIMARY_OVERLAP_OPTION,
+          { "name": "domain-name-servers", "data": "8.8.8.8, 1.1.1.1" }$PRIMARY_OVERLAP_OPTION,
           {
             "name": "classless-static-route",
             "data": "$RFC3442_ROUTES",

@@ -113,7 +113,7 @@ that omits the mandatory Relay Message option. CI runs that robustness probe in
 dedicated expected-divergence rows and excludes it only from the corresponding
 full Kea 3.x IPv6 rows, allowing every other IPv6 scenario to finish.
 
-Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet. The default-disabled security test passes on ISC; Kea 2.2 instead honors Option 118 without an explicit enable switch and is recorded as a reference-backend divergence.
+Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. It verifies both alternate-pool allocation and byte-for-byte Option 118 preservation in OFFER and ACK. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet. The default-disabled security test passes on ISC; Kea 2.2 instead honors Option 118 without an explicit enable switch and is recorded as a reference-backend divergence.
 
 The strict unknown-client INIT-REBOOT test remains enabled for external target services. ISC DHCP 4.4.1 ACKs the unused same-subnet address and Kea 2.2 NAKs it, rather than remaining silent as RFC 2131 requires, so only those named reference backends skip the assertion. ISC DHCP 4.4.1 similarly retains RFC 2131's historical omission of Client Identifier in replies; Kea and external targets run the RFC 6842 byte-for-byte echo assertion.
 
@@ -190,10 +190,10 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 Server-focused coverage spans 12 RFCs: the existing eight plus RFC 3442,
 RFC 4361, RFC 4704, and RFC 8925.
 
-- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM, NAK/DECLINE handling, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate.
+- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate.
 - **RFC 2131 pool capacity**: a dedicated bounded run exhausts the DHCPv4 pool, verifies that an additional client receives no offer, releases one lease, and proves the waiting client can acquire that address.
-- **RFC 2132**: required network options and T1/T2 lease timer validation.
-- **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path on Kea in the multi-subnet Docker topology.
+- **RFC 2132**: required network options, raw Subnet Mask/Router ordering, multi-address DNS encoding, and exact lease-time option length alongside T1/T2 timer validation.
+- **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path with exact response echo on Kea in the multi-subnet Docker topology.
 - **RFC 3046**: Relay Agent Information (Option 82) echo, byte preservation, omission for ordinary clients, and raw validation that relay metadata never moves into overloaded BOOTP fields.
 - **RFC 3396**: concatenated request-fragment acceptance plus exact reconstruction of a 320-octet response option split into sequential fragments.
 - **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, and unusual parameter request lists.

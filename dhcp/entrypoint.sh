@@ -173,7 +173,7 @@ subnet $NET netmask $NETMASK {
     range ${NET3}.${DHCPV4_POOL_START_OFFSET} ${NET3}.${DHCPV4_POOL_END_OFFSET};
     option routers ${NET3}.1;
     option subnet-mask $NETMASK;
-    option domain-name-servers 8.8.8.8;
+    option domain-name-servers 8.8.8.8, 1.1.1.1;
     option classless-static-routes
         0, $n1, $n2, $n3, 254,
         25, 198, 51, 100, 128, $n1, $n2, $n3, 254,

@@ -12,6 +12,7 @@ from dhcpv4_support import (
     mac_bytes as _support_mac_bytes,
     option_bytes as _support_option_bytes,
     raw_dhcp_option as _support_get_raw_option,
+    raw_dhcp_option_areas as _support_get_raw_areas,
     raw_dhcp_option_fragments as _support_get_raw_fragments,
     start_dhcp_sniffer as _support_start_dhcp_sniffer,
 )
@@ -44,6 +45,7 @@ SUBNET = os.getenv("TEST_SUBNET", "192.168.56.0/24")
 LEASE_TIME = float(os.getenv("TEST_LEASE_TIME", "120"))
 RFC3396_LONG_OPTION_CODE = 224
 RFC3396_LONG_OPTION = b"0123456789abcdef" * 20
+EXPECTED_DNS_SERVERS = ("8.8.8.8", "1.1.1.1")
 
 context_storage = {}
 
@@ -702,6 +704,26 @@ def step_then_inform_no_yiaddr(context):
         _remove_interface_ipv4(context_storage.get('inform_ip'))
 
 
+@then('the DHCPINFORM acknowledgement omits lease timing options')
+def step_then_inform_omits_lease_timing(context):
+    ack = context_storage.get('inform_ack')
+    assert ack is not None, "No DHCPACK stored from INFORM response"
+    forbidden = {
+        51: "IP Address Lease Time",
+        58: "Renewal Time",
+        59: "Rebinding Time",
+    }
+    present = {
+        code: [(area, len(value)) for area, value in _support_get_raw_fragments(ack, code)]
+        for code in forbidden
+        if _support_get_raw_fragments(ack, code)
+    }
+    assert not present, (
+        "DHCPINFORM acknowledgement included forbidden lease timing options: "
+        f"{present}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Lease options and timer validation (RFC 2131 §4.3.1, §4.4.5)
 # ---------------------------------------------------------------------------
@@ -719,6 +741,41 @@ def step_then_ack_has_router(context):
 @then('the DHCPACK includes a domain name server option')
 def step_then_ack_has_dns(context):
     _assert_dhcp_option(context_storage.get('ack_packet'), 'name_server')
+
+
+@then('the DHCPACK places the subnet mask before the router option')
+def step_then_subnet_mask_precedes_router(context):
+    ack = context_storage.get('ack_packet')
+    ordered_codes = [
+        code
+        for _, options in _support_get_raw_areas(ack)
+        for code, _ in options
+    ]
+    assert 1 in ordered_codes, "Raw DHCPACK is missing Subnet Mask option 1"
+    assert 3 in ordered_codes, "Raw DHCPACK is missing Router option 3"
+    assert ordered_codes.index(1) < ordered_codes.index(3), (
+        "Subnet Mask option 1 must precede Router option 3; got option order "
+        f"{ordered_codes}"
+    )
+
+
+@then('the DHCPACK encodes both DNS servers in a valid address list')
+def step_then_dns_wire_format(context):
+    ack = context_storage.get('ack_packet')
+    fragments = _support_get_raw_fragments(ack, 6)
+    assert fragments, "Raw DHCPACK is missing Domain Name Server option 6"
+    payload = b''.join(value for _, value in fragments)
+    assert len(payload) >= 4 and len(payload) % 4 == 0, (
+        "Domain Name Server option length must be a positive multiple of four; "
+        f"got {len(payload)} octets"
+    )
+    addresses = tuple(
+        str(ipaddress.ip_address(payload[offset:offset + 4]))
+        for offset in range(0, len(payload), 4)
+    )
+    assert addresses == EXPECTED_DNS_SERVERS, (
+        f"Expected DNS address list {EXPECTED_DNS_SERVERS}, got {addresses}"
+    )
 
 
 @then('the DHCPACK T1 timer is approximately half the lease time')
@@ -745,6 +802,19 @@ def step_then_t2_875(context):
     tolerance = max(2, expected * 0.05)
     assert abs(t2 - expected) <= tolerance, \
         f"T2={t2}s is not ~87.5% of lease_time={lease_time}s (expected {expected}±{tolerance})"
+
+
+@then('the DHCPACK encodes lease time as exactly four octets')
+def step_then_lease_time_wire_length(context):
+    ack = context_storage.get('ack_packet')
+    fragments = _support_get_raw_fragments(ack, 51)
+    assert len(fragments) == 1, (
+        f"Expected one IP Address Lease Time option, got {len(fragments)}"
+    )
+    area, payload = fragments[0]
+    assert len(payload) == 4, (
+        f"IP Address Lease Time in {area} must be four octets, got {len(payload)}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -853,6 +923,7 @@ def step_then_receive_offer_in_selected_subnet(context):
 
     offer = matching_offers[0]
     context_storage['offered_ip'] = offer[BOOTP].yiaddr
+    context_storage['rfc3011_offer_packet'] = offer
     context_storage['rfc3011_offer_server_id'] = _get_dhcp_option(offer, 'server_id')
 
 
@@ -919,6 +990,23 @@ def step_then_receive_ack_for_selected_subnet(context):
     )
 
     context_storage['ack_packet'] = matching_acks[0]
+
+
+@then('both selected-subnet responses echo Subnet Selection unchanged')
+def step_then_subnet_selection_echoed(context):
+    expected = _subnet_network_bytes(context_storage['rfc3011_selected_subnet'])
+    responses = (
+        ('DHCPOFFER', context_storage.get('rfc3011_offer_packet')),
+        ('DHCPACK', context_storage.get('ack_packet')),
+    )
+    for label, packet in responses:
+        assert packet is not None, f"Missing {label} for RFC 3011 echo check"
+        fragments = _support_get_raw_fragments(packet, 118)
+        actual = b''.join(value for _, value in fragments)
+        assert len(fragments) == 1 and actual == expected, (
+            f"{label} changed or omitted Subnet Selection option 118: "
+            f"expected {expected!r}, got {fragments!r}"
+        )
 
 
 @when('a client sends a DHCPDISCOVER with Relay Agent Information option')
