@@ -990,25 +990,77 @@ def _fqdn_wire(name):
     return wire + b"\x00"
 
 
+def _ddns_option(name):
+    # RFC 4702: E+S flags, zero RCODE fields, canonical DNS wire name.
+    return b"\x05\x00\x00" + _fqdn_wire(name)
+
+
+def _unique_ddns_fqdn():
+    labels = DDNS_FQDN.rstrip(".").split(".")
+    suffix = ".".join(labels[1:]) if len(labels) > 1 else labels[0]
+    return f"timing-{os.urandom(4).hex()}.{suffix}."
+
+
+def _dns_addresses(context, fqdn):
+    resolver = dns.resolver.Resolver(configure=False)
+    resolver.nameservers = [_state(context)["dns_server"]]
+    resolver.lifetime = 2
+    try:
+        return {answer.address for answer in resolver.resolve(fqdn, "A")}
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return set()
+
+
 @when("a DHCPv4 client commits a lease with its configured FQDN")
 def step_ddns_lease(context):
     _ensure_cleanup(context)
-    # RFC 4702: E+S flags, zero RCODE fields, canonical DNS wire name.
-    fqdn_option = b"\x05\x00\x00" + _fqdn_wire(DDNS_FQDN)
+    fqdn_option = _ddns_option(DDNS_FQDN)
+    _state(context)["ddns_fqdn"] = DDNS_FQDN
     _state(context)["ddns_lease"] = _dora(context, extra=[(81, fqdn_option)])
+
+
+@when("a DHCPv4 client requests an FQDN lease but stops after DHCPOFFER")
+def step_ddns_stops_after_offer(context):
+    _ensure_cleanup(context)
+    fqdn = _unique_ddns_fqdn()
+    extra = [(81, _ddns_option(fqdn))]
+    discovery = _discover(_new_mac(), extra=extra)
+    assert discovery["offers"], f"No DHCPOFFER for DDNS timing name {fqdn}"
+    _state(context)["ddns_fqdn"] = fqdn
+    _state(context)["ddns_extra"] = extra
+    _state(context)["ddns_discovery"] = discovery
+
+
+@then("the authoritative DNS service has no record before lease commitment")
+def step_ddns_absent_before_commit(context):
+    fqdn = _state(context)["ddns_fqdn"]
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        addresses = _dns_addresses(context, fqdn)
+        assert not addresses, (
+            f"DDNS name {fqdn} was published before DHCPREQUEST/DHCPACK: "
+            f"{sorted(addresses)}"
+        )
+        time.sleep(0.5)
+
+
+@when("the client commits the offered FQDN lease")
+def step_ddns_commit_offered_lease(context):
+    state = _state(context)
+    lease = _request(state["ddns_discovery"], extra=state["ddns_extra"])
+    state["active"].append(lease)
+    state["ddns_lease"] = lease
 
 
 @then("the authoritative DNS service resolves the FQDN to the committed address")
 def step_ddns_resolves(context):
-    resolver = dns.resolver.Resolver(configure=False)
-    resolver.nameservers = [_state(context)["dns_server"]]
-    resolver.lifetime = 2
+    fqdn = _state(context).get("ddns_fqdn", DDNS_FQDN)
     expected = _state(context)["ddns_lease"]["ip"]
     deadline = time.monotonic() + 15
     last_error = None
     while time.monotonic() < deadline:
         try:
-            answers = {answer.address for answer in resolver.resolve(DDNS_FQDN, "A")}
+            answers = _dns_addresses(context, fqdn)
             if expected in answers:
                 return
             last_error = f"answers={sorted(answers)}"
@@ -1016,7 +1068,7 @@ def step_ddns_resolves(context):
             last_error = str(exc)
         time.sleep(0.5)
     raise AssertionError(
-        f"DDNS name {DDNS_FQDN} did not resolve to {expected}: {last_error}"
+        f"DDNS name {fqdn} did not resolve to {expected}: {last_error}"
     )
 
 

@@ -222,7 +222,7 @@ def _wire_option_payloads(packet, option_code):
     return payloads
 
 
-def _decode_wait(packet, label):
+def _decode_wait_value(packet, label):
     value = raw_dhcp_option(packet, OPTION_IPV6_ONLY_PREFERRED, OPTION_108_NAMES)
     assert value is not None, f"{label} is missing DHCP option 108"
     payloads = _wire_option_payloads(packet, OPTION_IPV6_ONLY_PREFERRED)
@@ -233,7 +233,11 @@ def _decode_wait(packet, label):
     assert len(payload) == 4, (
         f"{label} option 108 has malformed length {len(payload)}; expected 4"
     )
-    wait = int.from_bytes(payload, "big")
+    return int.from_bytes(payload, "big")
+
+
+def _decode_wait(packet, label):
+    wait = _decode_wait_value(packet, label)
     assert MIN_V6ONLY_WAIT <= wait <= MAX_V6ONLY_WAIT, (
         f"{label} option 108 wait {wait} is outside the RFC 8925 range "
         f"{MIN_V6ONLY_WAIT}..{MAX_V6ONLY_WAIT}"
@@ -308,6 +312,18 @@ def step_duplicate_request_is_stable(context):
     assert waits == [RFC8925_WAIT, RFC8925_WAIT], (
         f"Duplicate PRL request returned unstable option 108 waits: {waits}"
     )
+
+
+@then("both matching responses contain a four-octet zero wait")
+def step_zero_default_wait(context):
+    assert RFC8925_WAIT == 0, (
+        "The @rfc8925_zero_default profile requires TEST_RFC8925_WAIT=0, got "
+        f"{RFC8925_WAIT}"
+    )
+    waits = [
+        _decode_wait_value(packet, label) for label, packet in _responses(context)
+    ]
+    assert waits == [0, 0], f"Zero-default profile returned waits {waits}"
 
 
 @when("an ordinary RFC 8925 client completes DORA without requesting option 108")

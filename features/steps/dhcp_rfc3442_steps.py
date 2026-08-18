@@ -32,6 +32,7 @@ NON_OCTET_ROUTE = os.getenv(
 ADDITIONAL_ROUTES = os.getenv(
     "TEST_RFC3442_ADDITIONAL_ROUTES", f"203.0.113.0/24={ROUTE_GATEWAY}"
 )
+EXTRA_ROUTE_COUNT = int(os.getenv("TEST_RFC3442_EXTRA_ROUTE_COUNT", "30"))
 UNKNOWN_PRL_CODE = int(os.getenv("TEST_RFC3442_UNKNOWN_PRL_CODE", "224"))
 
 _STANDARD_PRL = [121, 3, 33, 1, 6, 51, 58, 59]
@@ -83,6 +84,14 @@ def _expected_routes():
     ]
     routes = [_parse_route(DEFAULT_ROUTE), _parse_route(NON_OCTET_ROUTE)]
     routes.extend(_parse_route(route) for route in additional)
+    assert 0 <= EXTRA_ROUTE_COUNT <= 256, (
+        "TEST_RFC3442_EXTRA_ROUTE_COUNT must be between 0 and 256, got "
+        f"{EXTRA_ROUTE_COUNT}"
+    )
+    routes.extend(
+        _parse_route(f"10.200.{index}.0/24={ROUTE_GATEWAY}")
+        for index in range(EXTRA_ROUTE_COUNT)
+    )
     assert len(routes) >= 3, (
         "RFC 3442 coverage requires a default route, a non-octet-prefix route, "
         "and at least one additional route"
@@ -281,6 +290,29 @@ def step_responses_cover_route_shapes(context):
         assert any(prefix % 8 for prefix in prefixes), (
             f"{label} has no non-octet-prefix route: {routes!r}"
         )
+
+
+@then("both RFC 3442 responses split the oversized route option correctly")
+def step_responses_split_oversized_route_option(context):
+    for label, packet in (
+        ("DHCPOFFER", _state(context).get("offer")),
+        ("DHCPACK", _state(context).get("ack")),
+    ):
+        payloads = _dhcp_tlv_payloads(packet, 121)
+        total_length = sum(len(payload) for payload in payloads)
+        assert total_length > 255, (
+            f"{label} option 121 is only {total_length} octets; the fixture must "
+            "exercise RFC 3396 splitting"
+        )
+        assert len(payloads) >= 2, (
+            f"{label} did not split oversized option 121: "
+            f"fragment lengths={[len(payload) for payload in payloads]}"
+        )
+        assert all(0 < len(payload) <= 255 for payload in payloads), (
+            f"{label} has invalid option 121 fragment lengths: "
+            f"{[len(payload) for payload in payloads]}"
+        )
+        assert _decode_classless_routes(packet) == _expected_routes()
 
 
 @then("the configured classless default route is distinct from any legacy Router option")

@@ -98,6 +98,49 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  rfc8925-zero-default:
+    name: RFC 8925 zero-default / ${{ matrix.server }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        server: [isc-dhcpd, kea]
+    env:
+      RFC8925_WAIT: "0"
+      TEST_CAPABILITIES: rfc8925_zero_default
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify the four-octet zero V6ONLY_WAIT fallback
+        id: rfc8925-zero-tests
+        run: >-
+          bash ./run_dhcp_tests.sh
+          --server ${{ matrix.server }}
+          --ip-version v4
+          --tags @rfc8925_zero_default
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose down
+
+      - name: Publish RFC 8925 zero-default summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "RFC 8925 zero-default / ${{ matrix.server }}"
+          --run-outcome "${{ steps.rfc8925-zero-tests.outcome }}"
+
+      - name: Upload RFC 8925 zero-default JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rfc8925-zero-default-${{ matrix.server }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   focused-robustness:
     name: Focused robustness / ${{ matrix.server }} / v4
     runs-on: ubuntu-latest

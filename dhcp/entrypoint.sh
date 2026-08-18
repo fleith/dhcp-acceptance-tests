@@ -15,6 +15,8 @@ PREFIX="${IP_PREFIX##*/}"
 ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
 ALT_SERVER_IP="${RFC3011_ALT_SERVER_IP:-}"
 RFC8925_WAIT="${RFC8925_WAIT:-1800}"
+RFC3442_EXTRA_ROUTE_COUNT="${RFC3442_EXTRA_ROUTE_COUNT:-30}"
+DHCPV4_RFC3396_POLICY_DOMAIN="${DHCPV4_RFC3396_POLICY_DOMAIN:-rfc3396-reassembled.test}"
 DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
 DHCPV4_POOL_END_OFFSET="${DHCPV4_POOL_END_OFFSET:-200}"
 DHCPV4_ALT_POOL_ENABLED="${DHCPV4_ALT_POOL_ENABLED:-1}"
@@ -119,6 +121,13 @@ while [ "$_rfc3396_count" -lt 20 ]; do
     _rfc3396_count=$(( _rfc3396_count + 1 ))
 done
 
+RFC3442_ROUTE_BYTES="0, $n1, $n2, $n3, 254, 25, 198, 51, 100, 128, $n1, $n2, $n3, 254, 24, 203, 0, 113, $n1, $n2, $n3, 254"
+_rfc3442_index=0
+while [ "$_rfc3442_index" -lt "$RFC3442_EXTRA_ROUTE_COUNT" ]; do
+    RFC3442_ROUTE_BYTES="$RFC3442_ROUTE_BYTES, 24, 10, 200, $_rfc3442_index, $n1, $n2, $n3, 254"
+    _rfc3442_index=$(( _rfc3442_index + 1 ))
+done
+
 # Give dhcpd a local address on the alternate subnet so it can serve that pool
 # and emit a valid server identifier for RFC 3011 selection tests.
 ip addr add "${ALT_SERVER_IP}/${ALT_PREFIX}" dev "$IFACE" >/dev/null 2>&1 || true
@@ -151,6 +160,11 @@ class "acceptance-class" {
     option domain-name "class.acceptance.test";
 }
 
+class "rfc3396-reassembled-host-name" {
+    match if option host-name = "client-fragmented-hostname";
+    option domain-name "$DHCPV4_RFC3396_POLICY_DOMAIN";
+}
+
 host acceptance-reserved {
     hardware ethernet $DHCPV4_RESERVED_MAC;
     fixed-address ${NET3}.${DHCPV4_RESERVED_OFFSET};
@@ -174,10 +188,7 @@ subnet $NET netmask $NETMASK {
     option routers ${NET3}.1;
     option subnet-mask $NETMASK;
     option domain-name-servers 8.8.8.8, 1.1.1.1;
-    option classless-static-routes
-        0, $n1, $n2, $n3, 254,
-        25, 198, 51, 100, 128, $n1, $n2, $n3, 254,
-        24, 203, 0, 113, $n1, $n2, $n3, 254;
+    option classless-static-routes $RFC3442_ROUTE_BYTES;
     option v6-only-preferred $RFC8925_WAIT;
 }
 subnet $ALT_NET netmask $NETMASK {

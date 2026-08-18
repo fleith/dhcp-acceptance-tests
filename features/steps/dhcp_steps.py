@@ -45,6 +45,9 @@ SUBNET = os.getenv("TEST_SUBNET", "192.168.56.0/24")
 LEASE_TIME = float(os.getenv("TEST_LEASE_TIME", "120"))
 RFC3396_LONG_OPTION_CODE = 224
 RFC3396_LONG_OPTION = b"0123456789abcdef" * 20
+RFC3396_POLICY_DOMAIN = os.getenv(
+    "TEST_RFC3396_POLICY_DOMAIN", "rfc3396-reassembled.test"
+)
 EXPECTED_DNS_SERVERS = ("8.8.8.8", "1.1.1.1")
 
 context_storage = {}
@@ -255,6 +258,10 @@ def step_then_receive_ack(context):
     xid = context_storage.get('transaction_id')
     offered_ip = context_storage.get('offered_ip')
     # Send DHCPREQUEST to accept the offered IP (required before server sends ACK)
+    request_extra_options = context_storage.get('request_extra_options', [])
+    request_prl = context_storage.get(
+        'request_parameter_request_list', [1, 3, 6, 51, 58, 59]
+    )
     request = (
         Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
         IP(src="0.0.0.0", dst="255.255.255.255") /
@@ -264,8 +271,9 @@ def step_then_receive_ack(context):
             ('message-type', 'request'),
             ('server_id', DHCP_SERVER_IP),
             ('requested_addr', offered_ip),
+            *request_extra_options,
             # Include PRL so dhcpd returns T1/T2 in the ACK (RFC 2132 §9.11)
-            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            ('param_req_list', request_prl),
             ('end'),
         ])
     )
@@ -1039,6 +1047,8 @@ def step_when_discover_with_concat_hostname(context):
     if Ether is None:
         raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
     xid = int.from_bytes(os.urandom(4), 'big')
+    hostname_fragments = [(12, b'client-'), (12, b'fragmented-hostname')]
+    parameter_request_list = [1, 3, 6, 15, 51, 58, 59]
     discover = (
         Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
         IP(src="0.0.0.0", dst="255.255.255.255") /
@@ -1046,9 +1056,8 @@ def step_when_discover_with_concat_hostname(context):
         BOOTP(chaddr=_mac_bytes(_client_mac()), flags=0x8000, xid=xid) /
         DHCP(options=[
             ('message-type', 'discover'),
-            (12, b'client-'),
-            (12, b'fragmented-hostname'),
-            ('param_req_list', [1, 3, 6, 51, 58, 59]),
+            *hostname_fragments,
+            ('param_req_list', parameter_request_list),
             ('end'),
         ])
     )
@@ -1056,6 +1065,40 @@ def step_when_discover_with_concat_hostname(context):
     sendp(discover, iface=INTERFACE, verbose=False)
     context_storage['transaction_id'] = xid
     context_storage['discover_sniffer'] = sniffer
+    context_storage['request_extra_options'] = hostname_fragments
+    context_storage['request_parameter_request_list'] = parameter_request_list
+
+
+@then('the reassembled host name activates one matching server policy')
+def step_then_reassembled_hostname_policy(context):
+    expected = RFC3396_POLICY_DOMAIN.encode('ascii')
+    for label, packet in (
+        ('DHCPOFFER', context_storage.get('offer_packet')),
+        ('DHCPACK', context_storage.get('ack_packet')),
+    ):
+        assert packet is not None, f"Missing {label} for RFC 3396 policy check"
+        fragments = _support_get_raw_fragments(packet, 15)
+        actual = b''.join(value for _, value in fragments).rstrip(b'\x00.')
+        assert actual == expected.rstrip(b'.'), (
+            f"{label} did not apply the policy for the reassembled host name: "
+            f"expected domain {expected!r}, got {actual!r} from {fragments!r}"
+        )
+
+
+@then('the reassembled host-name policy is absent')
+def step_then_reassembled_hostname_policy_absent(context):
+    unexpected = RFC3396_POLICY_DOMAIN.encode('ascii').rstrip(b'.')
+    for label, packet in (
+        ('DHCPOFFER', context_storage.get('offer_packet')),
+        ('DHCPACK', context_storage.get('ack_packet')),
+    ):
+        assert packet is not None, f"Missing {label} for RFC 3396 divergence check"
+        fragments = _support_get_raw_fragments(packet, 15)
+        actual = b''.join(value for _, value in fragments).rstrip(b'\x00.')
+        assert actual != unexpected, (
+            f"{label} now applies the reassembled host-name policy; remove the "
+            "Kea divergence and run the strict RFC 3396 scenario"
+        )
 
 
 @when('a client completes DORA requesting the oversized RFC 3396 option')
@@ -1244,20 +1287,60 @@ def step_then_same_ip_for_client_id(context):
     assert ip1 == ip2, f"Expected same lease for same client-id, got {ip1} then {ip2}"
 
 
-# RFC 4702 Client FQDN option (option 81) carried in both the DISCOVER and the
-# REQUEST.  flags=0x05 sets E (canonical DNS wire-format encoding) and S (client
-# asks the server to perform the forward A RR update); RCODE1/RCODE2 are 0 in
-# client messages.  The domain name uses length-prefixed labels per the E bit.
+# RFC 4702 Client FQDN option (option 81) carried in both DISCOVER and REQUEST.
+# S asks the server to perform the forward update; E selects canonical DNS wire
+# labels instead of the legacy ASCII form. Client RCODE fields are always zero.
 _RFC4702_FQDN_LABEL = b'testclient'
-_RFC4702_FQDN_OPTION = b'\x05\x00\x00\x0atestclient\x07example\x03com\x00'
+_RFC4702_FQDN_TEXT = b'testclient.example.com'
 
 
-@when('a client completes a DORA exchange carrying the Client FQDN option')
-def step_when_dora_with_fqdn(context):
+def _rfc4702_client_option(encoding):
+    normalized = encoding.strip().lower()
+    if normalized == 'dns':
+        return b'\x05\x00\x00\x0atestclient\x07example\x03com\x00'
+    if normalized == 'ascii':
+        return b'\x01\x00\x00' + _RFC4702_FQDN_TEXT
+    raise AssertionError(f"Unsupported RFC 4702 encoding {encoding!r}")
+
+
+def _decode_rfc4702_name(payload, dns_encoded):
+    encoded_name = payload[3:]
+    if not dns_encoded:
+        try:
+            return encoded_name.rstrip(b'\x00').decode('ascii')
+        except UnicodeDecodeError as exc:
+            raise AssertionError(
+                f"ASCII Client FQDN contains non-ASCII data: {encoded_name!r}"
+            ) from exc
+
+    labels = []
+    offset = 0
+    while offset < len(encoded_name):
+        length = encoded_name[offset]
+        offset += 1
+        if length == 0:
+            assert offset == len(encoded_name), (
+                f"DNS Client FQDN has trailing data: {encoded_name[offset:]!r}"
+            )
+            return '.'.join(labels)
+        assert 1 <= length <= 63, f"Invalid DNS label length {length}"
+        end = offset + length
+        assert end <= len(encoded_name), "DNS Client FQDN contains a truncated label"
+        try:
+            labels.append(encoded_name[offset:end].decode('ascii'))
+        except UnicodeDecodeError as exc:
+            raise AssertionError("DNS Client FQDN label is not ASCII") from exc
+        offset = end
+    raise AssertionError("DNS Client FQDN is missing its root label")
+
+
+@when('a client completes a DORA exchange using {encoding} Client FQDN encoding')
+def step_when_dora_with_fqdn_encoding(context, encoding):
     if Ether is None:
         raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
     mac = _client_mac()
     xid = int.from_bytes(os.urandom(4), 'big')
+    fqdn_option = _rfc4702_client_option(encoding)
     discover = (
         Ether(src=mac, dst="ff:ff:ff:ff:ff:ff") /
         IP(src="0.0.0.0", dst="255.255.255.255") /
@@ -1265,7 +1348,7 @@ def step_when_dora_with_fqdn(context):
         BOOTP(chaddr=_mac_bytes(mac), flags=0x8000, xid=xid) /
         DHCP(options=[
             ('message-type', 'discover'),
-            (81, _RFC4702_FQDN_OPTION),
+            (81, fqdn_option),
             ('param_req_list', [1, 3, 6, 51, 58, 59]),
             ('end'),
         ])
@@ -1290,7 +1373,7 @@ def step_when_dora_with_fqdn(context):
             ('message-type', 'request'),
             ('server_id', DHCP_SERVER_IP),
             ('requested_addr', offered_ip),
-            (81, _RFC4702_FQDN_OPTION),
+            (81, fqdn_option),
             ('param_req_list', [1, 3, 6, 51, 58, 59]),
             ('end'),
         ])
@@ -1299,20 +1382,29 @@ def step_when_dora_with_fqdn(context):
     sendp(request, iface=INTERFACE, verbose=False)
     ack_pkts = _dhcp_packets(request_sniffer, msg_type=5, xid=xid, server_id=DHCP_SERVER_IP)
     assert ack_pkts, "No DHCPACK received"
-    context_storage['rfc4702_ack'] = ack_pkts[0]
+    context_storage['rfc4702_encoding'] = encoding.strip().lower()
+    context_storage['rfc4702_responses'] = [offer_pkts[0], ack_pkts[0]]
 
 
-@then('the server\'s DHCPACK echoes the Client FQDN option')
-def step_then_ack_echoes_fqdn(context):
-    ack = context_storage.get('rfc4702_ack')
-    assert ack is not None, "No DHCPACK captured for the RFC 4702 exchange"
-    fqdn_value = _get_dhcp_raw_option(ack, 81, ('client_FQDN', 'client_fqdn', 'fqdn'))
-    present = [o[0] for o in ack[DHCP].options if isinstance(o, (tuple, list))]
-    assert fqdn_value is not None, \
-        f"DHCPACK did not echo the Client FQDN option (81); options present: {present}"
-    if isinstance(fqdn_value, str):
-        raw = fqdn_value.encode('latin-1', 'ignore')
-    else:
-        raw = bytes(fqdn_value)
-    assert _RFC4702_FQDN_LABEL in raw, \
-        f"Echoed FQDN option does not contain the requested name; got {raw!r}"
+@then('the DHCPACK preserves {encoding} Client FQDN encoding')
+def step_then_responses_preserve_fqdn_encoding(context, encoding):
+    expected_dns_encoding = encoding.strip().lower() == 'dns'
+    assert context_storage.get('rfc4702_encoding') == encoding.strip().lower()
+    responses = context_storage.get('rfc4702_responses', [])
+    assert len(responses) == 2, "Missing RFC 4702 OFFER/ACK responses"
+    for label, packet in (('DHCPACK', responses[1]),):
+        fragments = _support_get_raw_fragments(packet, 81)
+        assert len(fragments) == 1, (
+            f"{label} must contain one Client FQDN option, got {fragments!r}"
+        )
+        payload = fragments[0][1]
+        assert len(payload) >= 4, f"{label} Client FQDN option is truncated"
+        actual_dns_encoding = bool(payload[0] & 0x04)
+        assert actual_dns_encoding == expected_dns_encoding, (
+            f"{label} changed the RFC 4702 E flag for {encoding} input: "
+            f"flags=0x{payload[0]:02x}"
+        )
+        decoded_name = _decode_rfc4702_name(payload, actual_dns_encoding)
+        assert decoded_name.split('.', 1)[0].encode('ascii') == _RFC4702_FQDN_LABEL, (
+            f"{label} returned unexpected Client FQDN {decoded_name!r}"
+        )

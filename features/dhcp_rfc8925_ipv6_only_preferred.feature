@@ -16,6 +16,12 @@ Feature: RFC 8925 IPv6-Only Preferred option delivery
     When an RFC 8925 fallback client deliberately completes DORA with duplicate option 108 PRL entries
     Then both matching responses contain the same configured IPv6-Only Preferred wait
 
+  @ipv4_must_next @rfc8925_zero_default @requires_rfc8925_zero_default
+  Scenario: An IPv6-mostly pool without a wait override returns zero
+    Given the DHCP server is running
+    When an RFC 8925 fallback client deliberately completes DORA requesting option 108
+    Then both matching responses contain a four-octet zero wait
+
   Scenario: An ordinary client completes DORA without option 108
     Given the DHCP server is running
     When an ordinary RFC 8925 client completes DORA without requesting option 108
