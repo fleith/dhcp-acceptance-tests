@@ -58,6 +58,7 @@ def before_scenario(context, scenario):
         'reference_init_reboot_divergence': {'isc', 'isc-dhcpd', 'kea'},
         'isc_rfc6842_divergence': {'isc', 'isc-dhcpd'},
         'kea_rfc3011_default_divergence': {'kea'},
+        'kea_rfc3396_request_reassembly_divergence': {'kea'},
     }
     for tag, implementations in reference_divergences.items():
         if tag in scenario.tags and server_impl in implementations:

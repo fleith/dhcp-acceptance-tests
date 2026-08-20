@@ -13,6 +13,8 @@ IP="${IP_PREFIX%%/*}"
 PREFIX="${IP_PREFIX##*/}"
 ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
 RFC8925_WAIT="${RFC8925_WAIT:-1800}"
+RFC3442_EXTRA_ROUTE_COUNT="${RFC3442_EXTRA_ROUTE_COUNT:-30}"
+DHCPV4_RFC3396_POLICY_DOMAIN="${DHCPV4_RFC3396_POLICY_DOMAIN:-rfc3396-reassembled.test}"
 DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
 DHCPV4_POOL_END_OFFSET="${DHCPV4_POOL_END_OFFSET:-200}"
 DHCPV4_ALT_POOL_ENABLED="${DHCPV4_ALT_POOL_ENABLED:-1}"
@@ -112,6 +114,12 @@ N1_HEX=$(printf '%02x' "$n1")
 N2_HEX=$(printf '%02x' "$n2")
 N3_HEX=$(printf '%02x' "$n3")
 RFC3442_ROUTES="00:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe:19:c6:33:64:80:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe:18:cb:00:71:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe"
+_rfc3442_index=0
+while [ "$_rfc3442_index" -lt "$RFC3442_EXTRA_ROUTE_COUNT" ]; do
+    RFC3442_INDEX_HEX=$(printf '%02x' "$_rfc3442_index")
+    RFC3442_ROUTES="${RFC3442_ROUTES}:18:0a:c8:${RFC3442_INDEX_HEX}:${N1_HEX}:${N2_HEX}:${N3_HEX}:fe"
+    _rfc3442_index=$(( _rfc3442_index + 1 ))
+done
 
 KEA_VERSION=$(kea-dhcp4 -v 2>/dev/null | head -n 1)
 case "$KEA_VERSION" in
@@ -191,6 +199,13 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
         "test": "option[60].text == '$DHCPV4_CLASS_NAME'",
         "option-data": [
           { "name": "domain-name", "data": "class.acceptance.test" }
+        ]
+      },
+      {
+        "name": "rfc3396-reassembled-host-name",
+        "test": "option[12].text == 'client-fragmented-hostname'",
+        "option-data": [
+          { "name": "domain-name", "data": "$DHCPV4_RFC3396_POLICY_DOMAIN" }
         ]
       }
     ],

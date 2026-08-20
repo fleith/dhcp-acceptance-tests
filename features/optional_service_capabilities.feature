@@ -23,6 +23,14 @@ Feature: Optional DHCP service capabilities
     When a DHCPv4 client commits a lease with its configured FQDN
     Then the authoritative DNS service resolves the FQDN to the committed address
 
+  @ipv4_must_next @requires_ddns
+  Scenario: DNS update waits until the FQDN lease is committed
+    Given the DHCP service has a reachable authoritative DNS update target
+    When a DHCPv4 client requests an FQDN lease but stops after DHCPOFFER
+    Then the authoritative DNS service has no record before lease commitment
+    When the client commits the offered FQDN lease
+    Then the authoritative DNS service resolves the FQDN to the committed address
+
   @requires_multi_interface
   Scenario: A second directly connected interface selects its own subnet
     Given the test client has a configured second DHCPv4 interface

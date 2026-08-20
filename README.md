@@ -41,7 +41,8 @@ bash ./run_dhcp_tests.sh --server isc-dhcpd --ip-version dual
 bash ./run_dhcp_tests.sh --server kea --server-version kea-stable --ip-version dual
 
 # Run explicitly quarantined known-divergence scenarios
-bash ./run_dhcp_tests.sh --server kea --ip-version v6 --tags @known_divergence
+bash ./run_dhcp_tests.sh --server kea --ip-version v4 --tags @known_divergence --tags @ipv4
+bash ./run_dhcp_tests.sh --server kea --ip-version v6 --tags @known_divergence --tags @ipv6
 
 # Exhaust a dedicated four-address DHCPv4 pool and verify release recovery
 DHCPV4_POOL_START_OFFSET=190 DHCPV4_POOL_END_OFFSET=193 \
@@ -146,6 +147,8 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `DHCPV4_POOL_START_OFFSET` | `100` | First /24 host offset in the primary DHCPv4 pool |
 | `DHCPV4_POOL_END_OFFSET` | `200` | Last /24 host offset in the primary DHCPv4 pool |
 | `DHCPV4_ALT_POOL_ENABLED` | `1` | Set to `0` only in isolated exhaustion runs so the RFC 3011 alternate pool cannot provide fallback capacity |
+| `RFC3442_EXTRA_ROUTE_COUNT` | `30` | Extra /24 routes that force Classless Static Route option 121 above 255 octets |
+| `RFC8925_WAIT` | `1800` | Configured IPv6-Only Preferred wait; the isolated zero-default profile sets this to `0` |
 | `TEST_DHCPV4_EXHAUSTION_LIMIT` | `16` | Safety limit for an explicitly selected pool-exhaustion run |
 | `TEST_DHCPV4_CONCURRENT_CLIENTS` | `8` | Bounded number of simultaneous DHCPv4 clients (2..32) |
 | `TEST_DHCPV4_BATCH_DEADLINE` | `15` | Maximum seconds for the bounded concurrent batch |
@@ -195,13 +198,13 @@ RFC 4361, RFC 4704, and RFC 8925.
 - **RFC 2132**: required network options, raw Subnet Mask/Router ordering, multi-address DNS encoding, and exact lease-time option length alongside T1/T2 timer validation.
 - **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path with exact response echo on Kea in the multi-subnet Docker topology.
 - **RFC 3046**: Relay Agent Information (Option 82) echo, byte preservation, omission for ordinary clients, and raw validation that relay metadata never moves into overloaded BOOTP fields.
-- **RFC 3396**: concatenated request-fragment acceptance plus exact reconstruction of a 320-octet response option split into sequential fragments.
-- **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, and unusual parameter request lists.
+- **RFC 3396**: semantic request-fragment reassembly through class policy plus exact reconstruction of a 320-octet response option split into sequential fragments. Kea 2.2's request-policy divergence is explicitly documented.
+- **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, unusual parameter request lists, and exact RFC 3396 reconstruction of an oversized option 121. Kea 3.0.3 and 3.2.0 currently reject the oversized option instead of splitting it, which the compatibility matrix records explicitly.
 - **RFC 4361**: node-specific DHCPv4 client identifiers, stable identity across hardware changes, IAID/DUID isolation, and malformed identifier recovery.
-- **RFC 4702**: Client FQDN option (Option 81) negotiation - server echoes the option in its DHCPACK.
+- **RFC 4702**: Client FQDN option negotiation with raw DNS/ASCII encoding and E-flag preservation, plus capability-gated proof that DNS publication waits for lease commitment.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation. Kea runs the positive negotiation scenarios; ISC runs only the universal omission checks in this fixture. A tagged, default-excluded known divergence documents that Kea 2.2 returns FQDN without an ORO request.
 - **RFC 6842**: client-identifier based lease stability across hardware-address changes, byte-for-byte response echo when supplied, and response omission when absent. ISC DHCP 4.4.1's legacy reply omission is recorded as a backend-specific divergence.
-- **RFC 8925**: requested IPv6-Only Preferred option delivery, timer encoding, deliberate IPv4 fallback processing, request-list stability, and subnet/client omission behavior.
+- **RFC 8925**: requested IPv6-Only Preferred option delivery, configured and zero-default timer encoding, deliberate IPv4 fallback processing, request-list stability, and subnet/client omission behavior.
 - **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. Authenticated server-initiated Reconfigure remains outside the fixture's claims. IA_PD and these lifecycle paths deepen existing RFC coverage rather than adding another RFC to the count.
 
 Additional coverage is intentionally excluded from the 12-RFC server count:

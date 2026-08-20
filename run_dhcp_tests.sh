@@ -12,7 +12,7 @@
 #   bash ./run_dhcp_tests.sh --ip-version v6
 #   bash ./run_dhcp_tests.sh --server kea --ip-version dual
 #   bash ./run_dhcp_tests.sh --server kea --server-version kea-stable --ip-version v6
-#   bash ./run_dhcp_tests.sh --server kea --ip-version v6 --tags @known_divergence
+#   bash ./run_dhcp_tests.sh --server kea --ip-version v6 --tags @known_divergence --tags @ipv6
 
 set -euo pipefail
 

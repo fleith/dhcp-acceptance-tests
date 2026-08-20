@@ -18,7 +18,7 @@ requirement. Product-specific applicability review is still required.
 
 | Requirements | Covered | Partial | Conditional | Gap | Excluded |
 |---:|---:|---:|---:|---:|---:|
-| 82 | 34 | 29 | 2 | 17 | 0 |
+| 82 | 39 | 23 | 3 | 17 | 0 |
 
 | RFC | Title | Requirements | Covered | Partial | Conditional | Gap | Excluded |
 |---:|---|---:|---:|---:|---:|---:|---:|
@@ -26,13 +26,13 @@ requirement. Product-specific applicability review is still required.
 | [2132](https://www.rfc-editor.org/rfc/rfc2132.html) | DHCP Options and BOOTP Vendor Extensions | 4 | 4 | 0 | 0 | 0 | 0 |
 | [3011](https://www.rfc-editor.org/rfc/rfc3011.html) | IPv4 Subnet Selection Option | 4 | 2 | 2 | 0 | 0 | 0 |
 | [3046](https://www.rfc-editor.org/rfc/rfc3046.html) | DHCP Relay Agent Information Option | 5 | 2 | 2 | 0 | 1 | 0 |
-| [3396](https://www.rfc-editor.org/rfc/rfc3396.html) | Encoding Long DHCP Options | 3 | 1 | 2 | 0 | 0 | 0 |
-| [3442](https://www.rfc-editor.org/rfc/rfc3442.html) | Classless Static Route Option | 3 | 1 | 2 | 0 | 0 | 0 |
+| [3396](https://www.rfc-editor.org/rfc/rfc3396.html) | Encoding Long DHCP Options | 3 | 3 | 0 | 0 | 0 | 0 |
+| [3442](https://www.rfc-editor.org/rfc/rfc3442.html) | Classless Static Route Option | 3 | 2 | 1 | 0 | 0 | 0 |
 | [4361](https://www.rfc-editor.org/rfc/rfc4361.html) | Node-specific Client Identifiers for DHCPv4 | 1 | 1 | 0 | 0 | 0 | 0 |
-| [4702](https://www.rfc-editor.org/rfc/rfc4702.html) | DHCP Client FQDN Option | 6 | 0 | 3 | 0 | 3 | 0 |
+| [4702](https://www.rfc-editor.org/rfc/rfc4702.html) | DHCP Client FQDN Option | 6 | 1 | 1 | 1 | 3 | 0 |
 | [4704](https://www.rfc-editor.org/rfc/rfc4704.html) | DHCPv6 Client FQDN Option | 6 | 1 | 4 | 1 | 0 | 0 |
 | [6842](https://www.rfc-editor.org/rfc/rfc6842.html) | Client Identifier Option in DHCP Server Replies | 2 | 2 | 0 | 0 | 0 | 0 |
-| [8925](https://www.rfc-editor.org/rfc/rfc8925.html) | IPv6-Only Preferred Option for DHCPv4 | 9 | 4 | 3 | 0 | 2 | 0 |
+| [8925](https://www.rfc-editor.org/rfc/rfc8925.html) | IPv6-Only Preferred Option for DHCPv4 | 9 | 5 | 2 | 0 | 2 | 0 |
 | [9915](https://www.rfc-editor.org/rfc/rfc9915.html) | Dynamic Host Configuration Protocol for IPv6 | 27 | 8 | 8 | 1 | 10 | 0 |
 
 ## RFC 2131: Dynamic Host Configuration Protocol
@@ -84,15 +84,15 @@ requirement. Product-specific applicability review is still required.
 
 | ID | Section | Level | Status | Requirement | Evidence / rationale |
 |---|---:|---|---|---|---|
-| `RFC3396-4-MUST-01` | [4](https://www.rfc-editor.org/rfc/rfc3396.html#section-4) | MUST | **partial** | Concatenate multiple occurrences of one option code in aggregate-buffer order when decoding. | [Server accepts a DHCPDISCOVER with concatenated host-name fragments](../features/dhcp_rfc3396_option_concat.feature)<br>The valid exchange proves acceptance but does not expose the decoded host name used by server policy. |
+| `RFC3396-4-MUST-01` | [4](https://www.rfc-editor.org/rfc/rfc3396.html#section-4) | MUST | **covered** | Concatenate multiple occurrences of one option code in aggregate-buffer order when decoding. | [Server applies policy to a semantically reassembled request option](../features/dhcp_rfc3396_option_concat.feature)<br>Two ordered Host Name fragments must combine into one exact class-match value that selects a unique response domain. ISC DHCP passes; Kea 2.2 is recorded by a separate known-divergence scenario. |
 | `RFC3396-6-MUST-01` | [6](https://www.rfc-editor.org/rfc/rfc3396.html#section-6) | MUST | **covered** | Store split portions sequentially with identical option codes and lengths totaling the original data. | [Server splits and preserves a configured option longer than 255 octets](../features/dhcp_rfc3396_option_concat.feature)<br>OFFER and ACK fragments are decoded in aggregate-buffer order and must reconstruct the exact configured 320-octet value. |
-| `RFC3396-7-MUST-01` | [7](https://www.rfc-editor.org/rfc/rfc3396.html#section-7) | MUST | **partial** | Reassemble split option portions into one object and not treat fragments as independent values. | [Server accepts a DHCPDISCOVER with concatenated host-name fragments](../features/dhcp_rfc3396_option_concat.feature)<br>Acceptance is covered but semantic use of the reassembled value is not asserted. |
+| `RFC3396-7-MUST-01` | [7](https://www.rfc-editor.org/rfc/rfc3396.html#section-7) | MUST | **covered** | Reassemble split option portions into one object and not treat fragments as independent values. | [Server applies policy to a semantically reassembled request option](../features/dhcp_rfc3396_option_concat.feature)<br>Neither individual Host Name fragment matches the configured class; only the single reassembled value activates policy. |
 
 ## RFC 3442: Classless Static Route Option
 
 | ID | Section | Level | Status | Requirement | Evidence / rationale |
 |---|---:|---|---|---|---|
-| `RFC3442-5-MUST-01` | [5](https://www.rfc-editor.org/rfc/rfc3442.html#section-5) | MUST | **partial** | Implement RFC 3396 concatenation when sending the Classless Static Route option. | [Server returns configured classless routes in OFFER and ACK](../features/dhcp_rfc3442_classless_routes.feature)<br>The configured payload is below 255 octets so actual splitting is not exercised. |
+| `RFC3442-5-MUST-01` | [5](https://www.rfc-editor.org/rfc/rfc3442.html#section-5) | MUST | **covered** | Implement RFC 3396 concatenation when sending the Classless Static Route option. | [Server returns configured classless routes in OFFER and ACK](../features/dhcp_rfc3442_classless_routes.feature)<br>The 262-octet route payload must be emitted as multiple legal option 121 fragments and reconstruct exactly in both OFFER and ACK. ISC DHCP and the Kea 2.2 baseline pass; Kea 3.0.3 and 3.2.0 reject the oversized option and are recorded as informational compatibility divergences. |
 | `RFC3442-5-SHOULD-NOT-01` | [5](https://www.rfc-editor.org/rfc/rfc3442.html#section-5) | SHOULD NOT | **partial** | When sending Classless Static Routes omit Router and Static Routes options requested by the same client. | [Server returns configured classless routes in OFFER and ACK](../features/dhcp_rfc3442_classless_routes.feature)<br>The current assertion tolerates a legacy Router option and therefore does not enforce this recommendation. |
 | `RFC3442-3-MUST-01` | [3](https://www.rfc-editor.org/rfc/rfc3442.html#section-3) | MUST | **covered** | Encode destination descriptors and routers so classless routes including a default and non-octet prefix can be decoded unambiguously. | [Server returns configured classless routes in OFFER and ACK](../features/dhcp_rfc3442_classless_routes.feature) |
 
@@ -106,12 +106,12 @@ requirement. Product-specific applicability review is still required.
 
 | ID | Section | Level | Status | Requirement | Evidence / rationale |
 |---|---:|---|---|---|---|
-| `RFC4702-4-SHOULD-01` | [4](https://www.rfc-editor.org/rfc/rfc4702.html#section-4) | SHOULD | **gap** | Ignore an ASCII-encoded Client FQDN option when ASCII encoding is unsupported. | The suite sends DNS encoding only and has no unsupported-ASCII branch. |
-| `RFC4702-4-SHOULD-02` | [4](https://www.rfc-editor.org/rfc/rfc4702.html#section-4) | SHOULD | **partial** | Return the server's complete FQDN for the client. | [Server echoes the Client FQDN option in the DHCPACK](../features/dhcp_rfc4702_client_fqdn.feature)<br>Only an echoed configured name is covered; server-side completion or substitution is not. |
-| `RFC4702-4-MUST-01` | [4](https://www.rfc-editor.org/rfc/rfc4702.html#section-4) | MUST | **partial** | Use the same ASCII or DNS encoding as the client and set the E flag consistently. | [Server echoes the Client FQDN option in the DHCPACK](../features/dhcp_rfc4702_client_fqdn.feature)<br>The option echo provides partial coverage but the E flag and decoded wire format are not asserted separately. |
+| `RFC4702-4-SHOULD-01` | [4](https://www.rfc-editor.org/rfc/rfc4702.html#section-4) | SHOULD | **gap** | Ignore an ASCII-encoded Client FQDN option when ASCII encoding is unsupported. | Both supported encodings are exercised, but the fixture cannot force a server that lacks ASCII support. |
+| `RFC4702-4-SHOULD-02` | [4](https://www.rfc-editor.org/rfc/rfc4702.html#section-4) | SHOULD | **partial** | Return the server's complete FQDN for the client. | [DHCPACK preserves the Client FQDN encoding and E flag](../features/dhcp_rfc4702_client_fqdn.feature)<br>The returned name is decoded and its client label is checked, but server-side completion or substitution is not fixed across products. |
+| `RFC4702-4-MUST-01` | [4](https://www.rfc-editor.org/rfc/rfc4702.html#section-4) | MUST | **covered** | Use the same ASCII or DNS encoding as the client and set the E flag consistently. | [DHCPACK preserves the Client FQDN encoding and E flag](../features/dhcp_rfc4702_client_fqdn.feature)<br>Separate DNS and ASCII examples decode the raw DHCPACK payload and require the response E flag to match the request encoding. |
 | `RFC4702-4-SHOULD-03` | [4](https://www.rfc-editor.org/rfc/rfc4702.html#section-4) | SHOULD | **gap** | Ignore Host Name when Client FQDN and Host Name are both supplied. | No request currently carries both options with conflicting names. |
 | `RFC4702-4-SHOULD-04` | [4](https://www.rfc-editor.org/rfc/rfc4702.html#section-4) | SHOULD | **gap** | Set both response RCODE fields to 255. | The echoed option assertion does not inspect RCODE1 or RCODE2. |
-| `RFC4702-4.1-MUST-NOT-01` | [4.1](https://www.rfc-editor.org/rfc/rfc4702.html#section-4.1) | MUST NOT | **partial** | Do not initiate DNS updates while responding to DHCPDISCOVER. | [A committed FQDN lease creates its forward DNS record](../features/optional_service_capabilities.feature)<br>The capability test checks a post-commit record but does not prove that no update occurred during DISCOVER. |
+| `RFC4702-4.1-MUST-NOT-01` | [4.1](https://www.rfc-editor.org/rfc/rfc4702.html#section-4.1) | MUST NOT | **conditional** | Do not initiate DNS updates while responding to DHCPDISCOVER. | [DNS update waits until the FQDN lease is committed](../features/optional_service_capabilities.feature)<br>When the DDNS capability is enabled, a unique name must remain absent throughout the OFFER-only phase and appear only after REQUEST/ACK commits the lease. |
 
 ## RFC 4704: DHCPv6 Client FQDN Option
 
@@ -136,7 +136,7 @@ requirement. Product-specific applicability review is still required.
 | ID | Section | Level | Status | Requirement | Evidence / rationale |
 |---|---:|---|---|---|---|
 | `RFC8925-3.1-MUST-01` | [3.1](https://www.rfc-editor.org/rfc/rfc8925.html#section-3.1) | MUST | **covered** | Set the IPv6-Only Preferred option length to four octets. | [Server handles deliberate IPv4 fallback after returning option 108](../features/dhcp_rfc8925_ipv6_only_preferred.feature) |
-| `RFC8925-3.1-MUST-02` | [3.1](https://www.rfc-editor.org/rfc/rfc8925.html#section-3.1) | MUST | **partial** | Use the configured V6ONLY_WAIT value or zero when no pool value is configured. | [Server handles deliberate IPv4 fallback after returning option 108](../features/dhcp_rfc8925_ipv6_only_preferred.feature)<br>The configured nonzero value is covered; the zero-default path is not. |
+| `RFC8925-3.1-MUST-02` | [3.1](https://www.rfc-editor.org/rfc/rfc8925.html#section-3.1) | MUST | **covered** | Use the configured V6ONLY_WAIT value or zero when no pool value is configured. | [Server handles deliberate IPv4 fallback after returning option 108](../features/dhcp_rfc8925_ipv6_only_preferred.feature)<br>[An IPv6-mostly pool without a wait override returns zero](../features/dhcp_rfc8925_ipv6_only_preferred.feature)<br>The ordinary fixture validates the configured value; a dedicated required CI profile validates one exact four-octet zero in OFFER and ACK. |
 | `RFC8925-3.3-SHOULD-01` | [3.3](https://www.rfc-editor.org/rfc/rfc8925.html#section-3.3) | SHOULD | **partial** | Allow IPv6-Only Preferred to be configured for all pools or individual pools. | [The alternate non-IPv6-mostly subnet omits option 108](../features/dhcp_rfc8925_ipv6_only_preferred.feature)<br>Pool-specific behavior is covered on the Kea alternate subnet only. |
 | `RFC8925-3.3-MUST-NOT-01` | [3.3](https://www.rfc-editor.org/rfc/rfc8925.html#section-3.3) | MUST NOT | **covered** | Do not return IPv6-Only Preferred from a pool that is not configured IPv6-mostly. | [The alternate non-IPv6-mostly subnet omits option 108](../features/dhcp_rfc8925_ipv6_only_preferred.feature) |
 | `RFC8925-3.3-MUST-NOT-02` | [3.3](https://www.rfc-editor.org/rfc/rfc8925.html#section-3.3) | MUST NOT | **covered** | Do not return IPv6-Only Preferred unless the client requested it in the Parameter Request List. | [An ordinary client completes DORA without option 108](../features/dhcp_rfc8925_ipv6_only_preferred.feature) |
