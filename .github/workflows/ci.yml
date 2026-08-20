@@ -536,6 +536,7 @@ jobs:
             ip_version: v4
             extra_args: ""
             expected_failure_pattern: ""
+            expected_failure_pattern_2: ""
             expected_log_pattern: ""
             artifact_suffix: full
           - name: ISC DHCP 4.4.3-P1 / v6
@@ -544,6 +545,7 @@ jobs:
             ip_version: v6
             extra_args: ""
             expected_failure_pattern: ""
+            expected_failure_pattern_2: ""
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.0.3 LTS / v4
@@ -552,6 +554,7 @@ jobs:
             ip_version: v4
             extra_args: ""
             expected_failure_pattern: dhcp_rfc8925_ipv6_only_preferred
+            expected_failure_pattern_2: dhcp_rfc3442_classless_routes
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.0.3 LTS / v6
@@ -560,6 +563,7 @@ jobs:
             ip_version: v6
             extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_isolated"
             expected_failure_pattern: ""
+            expected_failure_pattern_2: ""
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.0.3 LTS / v6 truncated relay Interface-ID
@@ -568,6 +572,7 @@ jobs:
             ip_version: v6
             extra_args: "--tags @kea3_truncated_interface_id"
             expected_failure_pattern: ""
+            expected_failure_pattern_2: ""
             expected_log_pattern: ""
             artifact_suffix: truncated-interface-id
           - name: Kea 3.2.0 stable / v4
@@ -576,6 +581,7 @@ jobs:
             ip_version: v4
             extra_args: ""
             expected_failure_pattern: dhcp_rfc8925_ipv6_only_preferred
+            expected_failure_pattern_2: dhcp_rfc3442_classless_routes
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.2.0 stable / v6
@@ -584,6 +590,7 @@ jobs:
             ip_version: v6
             extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_isolated"
             expected_failure_pattern: ""
+            expected_failure_pattern_2: ""
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.2.0 stable / v6 truncated relay Interface-ID
@@ -592,14 +599,25 @@ jobs:
             ip_version: v6
             extra_args: "--tags @kea3_truncated_interface_id"
             expected_failure_pattern: ""
+            expected_failure_pattern_2: ""
             expected_log_pattern: ""
             artifact_suffix: truncated-interface-id
-          - name: Kea baseline / known divergences
+          - name: Kea baseline / IPv4 known divergences
+            server: kea
+            server_version: baseline
+            ip_version: v4
+            extra_args: "--tags @known_divergence --tags @ipv4"
+            expected_failure_pattern: ""
+            expected_failure_pattern_2: ""
+            expected_log_pattern: ""
+            artifact_suffix: known-divergences
+          - name: Kea baseline / IPv6 known divergences
             server: kea
             server_version: baseline
             ip_version: v6
-            extra_args: "--tags @known_divergence"
+            extra_args: "--tags @known_divergence --tags @ipv6"
             expected_failure_pattern: ""
+            expected_failure_pattern_2: ""
             expected_log_pattern: ""
             artifact_suffix: known-divergences
     steps:
@@ -629,6 +647,7 @@ jobs:
           --title "Informational / ${{ matrix.name }}"
           --run-outcome "${{ steps.compatibility-tests.outcome }}"
           ${{ matrix.expected_failure_pattern != '' && format('--expected-failure-pattern {0}', matrix.expected_failure_pattern) || '' }}
+          ${{ matrix.expected_failure_pattern_2 != '' && format('--expected-failure-pattern {0}', matrix.expected_failure_pattern_2) || '' }}
           ${{ matrix.expected_log_pattern != '' && format('--log-file compatibility.log --expected-log-pattern {0}', matrix.expected_log_pattern) || '' }}
 
       - name: Upload compatibility JUnit reports

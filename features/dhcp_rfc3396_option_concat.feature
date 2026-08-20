@@ -1,3 +1,4 @@
+@ipv4
 Feature: RFC 3396 Option concatenation and long options
   The server should accept requests that carry concatenated option fragments
 

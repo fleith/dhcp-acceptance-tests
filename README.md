@@ -41,7 +41,8 @@ bash ./run_dhcp_tests.sh --server isc-dhcpd --ip-version dual
 bash ./run_dhcp_tests.sh --server kea --server-version kea-stable --ip-version dual
 
 # Run explicitly quarantined known-divergence scenarios
-bash ./run_dhcp_tests.sh --server kea --ip-version v6 --tags @known_divergence
+bash ./run_dhcp_tests.sh --server kea --ip-version v4 --tags @known_divergence --tags @ipv4
+bash ./run_dhcp_tests.sh --server kea --ip-version v6 --tags @known_divergence --tags @ipv6
 
 # Exhaust a dedicated four-address DHCPv4 pool and verify release recovery
 DHCPV4_POOL_START_OFFSET=190 DHCPV4_POOL_END_OFFSET=193 \
@@ -198,7 +199,7 @@ RFC 4361, RFC 4704, and RFC 8925.
 - **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path with exact response echo on Kea in the multi-subnet Docker topology.
 - **RFC 3046**: Relay Agent Information (Option 82) echo, byte preservation, omission for ordinary clients, and raw validation that relay metadata never moves into overloaded BOOTP fields.
 - **RFC 3396**: semantic request-fragment reassembly through class policy plus exact reconstruction of a 320-octet response option split into sequential fragments. Kea 2.2's request-policy divergence is explicitly documented.
-- **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, unusual parameter request lists, and exact RFC 3396 reconstruction of an oversized option 121.
+- **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, unusual parameter request lists, and exact RFC 3396 reconstruction of an oversized option 121. Kea 3.0.3 and 3.2.0 currently reject the oversized option instead of splitting it, which the compatibility matrix records explicitly.
 - **RFC 4361**: node-specific DHCPv4 client identifiers, stable identity across hardware changes, IAID/DUID isolation, and malformed identifier recovery.
 - **RFC 4702**: Client FQDN option negotiation with raw DNS/ASCII encoding and E-flag preservation, plus capability-gated proof that DNS publication waits for lease commitment.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation. Kea runs the positive negotiation scenarios; ISC runs only the universal omission checks in this fixture. A tagged, default-excluded known divergence documents that Kea 2.2 returns FQDN without an ORO request.
