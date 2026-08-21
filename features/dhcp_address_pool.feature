@@ -9,6 +9,14 @@ Feature: DHCP address pool behaviour (RFC 2131 §4.1)
     Then the client receives a DHCPOFFER with a reusable IP address from the pool
     And a DHCPACK finalizes the lease
 
+  @ipv4_observability
+  Scenario: Released client initialization parameters remain reusable
+    Given a DHCPv4 client holds a classed lease with a stable client identifier
+    When that client releases its classed lease
+    And the same client identifier reconnects from a different hardware address
+    Then the released address is reused for the stable client identifier
+    And the acknowledged initialization parameters match the released lease
+
   @negative @pool_exhaustion
   Scenario: A released address restores capacity to an exhausted pool
     Given every configured DHCPv4 pool address is leased

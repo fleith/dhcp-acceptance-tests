@@ -4,6 +4,7 @@
 # Usage:
 #   bash ./run_dhcp_tests.sh [--server isc-dhcpd|kea] [--ip-version v4|v6|dual]
 #       [--server-version baseline|isc-final|kea-lts|kea-stable]
+#       [--compose-file PATH]
 #       [--tags TAG_EXPRESSION]... [-- <extra compose args>]
 #
 # Examples:
@@ -22,7 +23,7 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 # Git Bash rewrites container paths such as /app before invoking Docker.
 case "$(uname -s)" in
   MINGW*|MSYS*)
-    export MSYS2_ENV_CONV_EXCL="TEST_RESULTS_DIR${MSYS2_ENV_CONV_EXCL:+;${MSYS2_ENV_CONV_EXCL}}"
+    export MSYS2_ENV_CONV_EXCL="TEST_RESULTS_DIR;DHCPV4_SERVER_LOG_FILE;TEST_DHCPV4_SERVER_LOG_FILE${MSYS2_ENV_CONV_EXCL:+;${MSYS2_ENV_CONV_EXCL}}"
     ;;
 esac
 
@@ -30,6 +31,7 @@ SERVER="isc-dhcpd"
 IP_VERSION="v4"
 SERVER_VERSION="baseline"
 BEHAVE_TAGS=()
+ADDITIONAL_COMPOSE_FILES=()
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -52,6 +54,11 @@ while [[ $# -gt 0 ]]; do
     --tags)
       [[ $# -ge 2 ]] || { echo "[ERROR] --tags requires a value"; exit 2; }
       BEHAVE_TAGS+=("$2")
+      shift 2
+      ;;
+    --compose-file)
+      [[ $# -ge 2 ]] || { echo "[ERROR] --compose-file requires a value"; exit 2; }
+      ADDITIONAL_COMPOSE_FILES+=(-f "$2")
       shift 2
       ;;
     --)
@@ -93,6 +100,8 @@ build_compose_files() {
       exit 2
       ;;
   esac
+
+  COMPOSE_FILES+=("${ADDITIONAL_COMPOSE_FILES[@]}")
 }
 
 configure_version_profile() {

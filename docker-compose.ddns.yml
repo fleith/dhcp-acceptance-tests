@@ -1,0 +1,37 @@
+services:
+  ddns-observer:
+    image: python:3.13-slim
+    command: >-
+      bash -c "pip install -r /app/requirements.txt -q &&
+               python3 /app/ddns/observer.py"
+    environment:
+      DDNS_ZONE: ${DHCPV4_FQDN_SUFFIX:-dhcp-acceptance.test}
+    volumes:
+      - .:/app:ro
+    networks:
+      dhcp-test-net:
+        ipv4_address: 172.29.0.4
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(1); s.sendto(b'\x00\x00\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01', ('127.0.0.1', 53)); s.recvfrom(512)"
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+  dhcp-server:
+    environment:
+      DHCPV4_DDNS_SERVER_IP: 172.29.0.4
+    depends_on:
+      ddns-observer:
+        condition: service_healthy
+
+  test-runner:
+    environment:
+      TEST_CAPABILITIES: ddns
+      TEST_DNS_SERVER: 172.29.0.4
+    depends_on:
+      ddns-observer:
+        condition: service_healthy

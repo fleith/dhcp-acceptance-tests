@@ -2,6 +2,8 @@ import subprocess
 import time
 import ipaddress
 import os
+import re
+from pathlib import Path
 from behave import given, when, then
 from dhcpv4_support import (
     assert_dhcp_option as _support_assert_dhcp_option,
@@ -44,6 +46,10 @@ INTERFACE = os.getenv("TEST_INTERFACE", "eth0")
 SUBNET = os.getenv("TEST_SUBNET", "192.168.56.0/24")
 LEASE_TIME = float(os.getenv("TEST_LEASE_TIME", "120"))
 RFC3396_LONG_OPTION_CODE = 224
+ADMIN_EVENT_LOG = Path(
+    os.getenv("TEST_DHCPV4_SERVER_LOG_FILE", "/app/test-state/dhcpv4-server.log")
+)
+DECLINE_LOG_PATTERN = os.getenv("TEST_DHCPV4_DECLINE_LOG_PATTERN", "").strip()
 RFC3396_LONG_OPTION = b"0123456789abcdef" * 20
 RFC3396_POLICY_DOMAIN = os.getenv(
     "TEST_RFC3396_POLICY_DOMAIN", "rfc3396-reassembled.test"
@@ -521,6 +527,50 @@ def step_then_new_offer_after_decline(context):
     new_offer = context_storage.get('offered_ip')
     assert new_offer != declined_ip, \
         f"Server re-offered the declined address {declined_ip}"
+
+
+@given('the DHCPv4 administrative event log is observable')
+def step_given_admin_event_log(context):
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and not ADMIN_EVENT_LOG.exists():
+        time.sleep(0.1)
+    assert ADMIN_EVENT_LOG.is_file(), (
+        f"DHCPv4 server event log is unavailable at {ADMIN_EVENT_LOG}"
+    )
+    context_storage['admin_log_offset'] = ADMIN_EVENT_LOG.stat().st_size
+
+
+@then('the administrative event log identifies the declined address')
+def step_then_decline_is_logged(context):
+    declined_ip = context_storage.get('declined_ip')
+    assert declined_ip, "No declined address was recorded by the transaction"
+    offset = context_storage.get('admin_log_offset', 0)
+    if DECLINE_LOG_PATTERN:
+        pattern = re.compile(
+            DECLINE_LOG_PATTERN.format(address=re.escape(declined_ip)),
+            re.IGNORECASE,
+        )
+    else:
+        keyword = r'(?:declin(?:e|ed|ing)|abandon(?:ed|ing)?|conflict)'
+        address = re.escape(declined_ip)
+        pattern = re.compile(
+            rf'(?:{keyword}.*{address}|{address}.*{keyword})',
+            re.IGNORECASE | re.DOTALL,
+        )
+
+    deadline = time.monotonic() + 8
+    observed = ''
+    while time.monotonic() < deadline:
+        observed = ADMIN_EVENT_LOG.read_bytes()[offset:].decode(
+            'utf-8', errors='replace'
+        )
+        if pattern.search(observed):
+            return
+        time.sleep(0.2)
+    raise AssertionError(
+        f"No administrative DHCPDECLINE notification for {declined_ip} was "
+        f"found in {ADMIN_EVENT_LOG}; new log output={observed!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

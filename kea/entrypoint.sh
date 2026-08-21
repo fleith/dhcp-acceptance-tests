@@ -14,6 +14,7 @@ PREFIX="${IP_PREFIX##*/}"
 ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
 RFC8925_WAIT="${RFC8925_WAIT:-1800}"
 DHCPV4_FQDN_SUFFIX="${DHCPV4_FQDN_SUFFIX:-dhcp-acceptance.test}"
+DHCPV4_SERVER_LOG_FILE="${DHCPV4_SERVER_LOG_FILE:-}"
 RFC3442_EXTRA_ROUTE_COUNT="${RFC3442_EXTRA_ROUTE_COUNT:-30}"
 DHCPV4_RFC3396_POLICY_DOMAIN="${DHCPV4_RFC3396_POLICY_DOMAIN:-rfc3396-reassembled.test}"
 DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
@@ -168,6 +169,13 @@ if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ]; then
     ]"
 fi
 
+KEA_LOG_OUTPUT="stdout"
+if [ -n "$DHCPV4_SERVER_LOG_FILE" ]; then
+    mkdir -p "$(dirname "$DHCPV4_SERVER_LOG_FILE")"
+    : > "$DHCPV4_SERVER_LOG_FILE"
+    KEA_LOG_OUTPUT="$DHCPV4_SERVER_LOG_FILE"
+fi
+
 mkdir -p /etc/kea /data /run/kea /var/run/kea /var/lib/kea
 # A container may be restarted after SIGKILL with the old PID file still on
 # its writable layer. PID 1 is then the entrypoint itself, so Kea otherwise
@@ -243,13 +251,11 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
         ],
         "pools": [
           {
-            "pool": "${NET3}.${DHCPV4_POOL_START_OFFSET} - ${NET3}.${DHCPV4_POOL_END_OFFSET}",
-            "option-data": [
-              { "name": "v6-only-preferred", "data": "$RFC8925_WAIT" }
-            ]
+            "pool": "${NET3}.${DHCPV4_POOL_START_OFFSET} - ${NET3}.${DHCPV4_POOL_END_OFFSET}"
           }
         ],
         "option-data": [
+          { "name": "v6-only-preferred", "data": "$RFC8925_WAIT" },
           { "name": "routers", "data": "${NET3}.1" },
           { "name": "subnet-mask", "data": "$NETMASK" },
           { "name": "domain-name-servers", "data": "8.8.8.8, 1.1.1.1" }$PRIMARY_OVERLAP_OPTION,
@@ -285,7 +291,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
     "loggers": [
       {
         "name": "kea-dhcp4",
-        "output_options": [ { "output": "stdout" } ],
+        "output_options": [ { "output": "$KEA_LOG_OUTPUT" } ],
         "severity": "INFO"
       }
     ]

@@ -31,6 +31,13 @@ Feature: Optional DHCP service capabilities
     When the client commits the offered FQDN lease
     Then the authoritative DNS service resolves the FQDN to the committed address
 
+  @ipv4_observability @requires_ddns
+  Scenario: Client FQDN suppresses a conflicting Host Name DNS update
+    Given the DHCP service has a reachable authoritative DNS update target
+    When a DHCPv4 client commits conflicting Client FQDN and Host Name values
+    Then the authoritative DNS service resolves the Client FQDN to the committed address
+    And the authoritative DNS service has no record for the conflicting Host Name
+
   @requires_multi_interface
   Scenario: A second directly connected interface selects its own subnet
     Given the test client has a configured second DHCPv4 interface

@@ -34,3 +34,18 @@ Feature: RFC 8925 IPv6-Only Preferred option delivery
     Given the DHCP server is running
     When an RFC 8925 client requests option 108 on the relayed non-IPv6-mostly subnet
     Then both matching relayed-subnet responses omit the IPv6-Only Preferred option
+
+  @negative @ipv4_observability
+  Scenario: IPv6-Only Preferred suppresses DHCPv4 Rapid Commit
+    Given the DHCP server is running
+    When an RFC 8925 client requests Rapid Commit together with option 108
+    Then the server does not send a rapid DHCPACK
+    And the fallback DHCPOFFER contains IPv6-Only Preferred without Rapid Commit
+
+  @capability @requires_rfc8925_addressless_observability @ipv4_observability
+  Scenario: An addressless IPv6-Only Preferred response consumes no IPv4 candidate
+    Given the RFC 8925 observability fixture has a bounded IPv4 pool
+    When an RFC 8925 client requests an addressless option 108 response
+    Then the server sends an addressless DHCPOFFER without probing the pool
+    When ordinary clients immediately acquire every configured pool address
+    Then the bounded pool reaches full committed capacity

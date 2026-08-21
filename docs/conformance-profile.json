@@ -147,10 +147,15 @@
     },
     {
       "id": "GAP-DDNS",
-      "title": "Dynamic DNS forward update after lease commit",
-      "status": "conditional",
-      "mode": "capability",
-      "evidence": ["features/optional_service_capabilities.feature"],
+      "title": "Dynamic DNS update timing and Client FQDN precedence",
+      "status": "covered",
+      "mode": "orchestrated",
+      "evidence": [
+        "features/optional_service_capabilities.feature",
+        "ddns/observer.py",
+        "docker-compose.ddns.yml",
+        "run_ipv4_observability_tests.sh"
+      ],
       "tags": ["@requires_ddns"]
     },
     {

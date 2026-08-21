@@ -3,8 +3,9 @@
 import ipaddress
 import os
 import subprocess
+import time
 
-from behave import then, when
+from behave import given, then, when
 from dhcpv4_support import (
     BOOTP,
     DHCP,
@@ -14,6 +15,7 @@ from dhcpv4_support import (
     assert_raw_option_absent,
     build_client_packet,
     dhcp_option,
+    dhcp_options,
     dhcp_packets,
     mac_bytes,
     raw_dhcp_option,
@@ -22,9 +24,9 @@ from dhcpv4_support import (
 )
 
 try:
-    from scapy.all import sendp
+    from scapy.all import ARP, AsyncSniffer, ICMP, sendp
 except ImportError:
-    sendp = None
+    ARP = AsyncSniffer = ICMP = sendp = None
 
 
 DHCP_SERVER_IP = os.getenv("TEST_SERVER_IP", "192.168.56.1")
@@ -37,8 +39,11 @@ RFC8925_NON_V6ONLY_SUBNET = os.getenv(
 MIN_V6ONLY_WAIT = 300
 MAX_V6ONLY_WAIT = 0xFFFFFFFF
 OPTION_IPV6_ONLY_PREFERRED = 108
+OPTION_RAPID_COMMIT = 80
 OPTION_108_NAMES = ("ipv6-only-preferred", "v6-only-preferred")
 STANDARD_PRL = [1, 3, 6, 51, 58, 59]
+POOL_START_OFFSET = int(os.getenv("DHCPV4_POOL_START_OFFSET", "100"))
+POOL_END_OFFSET = int(os.getenv("DHCPV4_POOL_END_OFFSET", "200"))
 
 
 def _state(context):
@@ -64,6 +69,17 @@ def _require_packet_support():
     require_scapy_v4()
     if sendp is None:
         raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
+
+
+def _configured_pool_addresses():
+    network = ipaddress.ip_network(SUBNET, strict=False)
+    assert 0 < POOL_START_OFFSET <= POOL_END_OFFSET < network.num_addresses - 1, (
+        f"Invalid pool offsets {POOL_START_OFFSET}-{POOL_END_OFFSET} for {network}"
+    )
+    return {
+        str(network.network_address + offset)
+        for offset in range(POOL_START_OFFSET, POOL_END_OFFSET + 1)
+    }
 
 
 def _client_bytes(mac):
@@ -135,6 +151,26 @@ def _matching_packets(sniffer, message_type, xid, mac, server_id=None):
         for packet in packets
         if bytes(packet[BOOTP].chaddr[:6]) == expected_client
     ]
+
+
+def _matching_captured_packets(packets, message_type, xid, mac, server_id=None):
+    expected_client = _client_bytes(mac)
+    matches = [
+        packet
+        for packet in packets
+        if packet.haslayer(DHCP)
+        and packet.haslayer(BOOTP)
+        and dhcp_options(packet).get("message-type") == message_type
+        and packet[BOOTP].xid == xid
+        and bytes(packet[BOOTP].chaddr[:6]) == expected_client
+    ]
+    if server_id is not None:
+        matches = [
+            packet
+            for packet in matches
+            if dhcp_option(packet, "server_id") == server_id
+        ]
+    return matches
 
 
 def _capture_offer(
@@ -446,3 +482,168 @@ def step_relayed_responses_omit_option_108(context):
             f"{label} address {packet[BOOTP].yiaddr} is outside {selected_subnet}"
         )
         _assert_option_absent(packet, label)
+
+
+@when("an RFC 8925 client requests Rapid Commit together with option 108")
+def step_request_rapid_commit_with_option_108(context):
+    _require_packet_support()
+    state = _state(context)
+    state.clear()
+    mac = _new_client_mac()
+    xid = _new_xid()
+    options = [
+        ("message-type", "discover"),
+        (OPTION_RAPID_COMMIT, b""),
+        (
+            "param_req_list",
+            STANDARD_PRL + [OPTION_IPV6_ONLY_PREFERRED],
+        ),
+        "end",
+    ]
+    packet = build_client_packet(mac, xid, options)
+    sniffer = start_dhcp_sniffer(INTERFACE)
+    sendp(packet, iface=INTERFACE, verbose=False)
+    sniffer.join()
+    packets = list(sniffer.results or [])
+    state["rapid_commit_acks"] = _matching_captured_packets(
+        packets, 5, xid, mac, DHCP_SERVER_IP
+    )
+    state["rapid_commit_offers"] = _matching_captured_packets(
+        packets, 2, xid, mac, DHCP_SERVER_IP
+    )
+
+
+@then("the server does not send a rapid DHCPACK")
+def step_no_rapid_commit_ack(context):
+    assert not _state(context)["rapid_commit_acks"], (
+        "Server honored DHCPv4 Rapid Commit even though the response included "
+        "IPv6-Only Preferred"
+    )
+
+
+@then("the fallback DHCPOFFER contains IPv6-Only Preferred without Rapid Commit")
+def step_option_108_offer_omits_rapid_commit(context):
+    offers = _state(context)["rapid_commit_offers"]
+    assert offers, "Server sent neither a normal DHCPOFFER nor an addressless DHCPOFFER"
+    for offer in offers:
+        assert _decode_wait(offer, "DHCPOFFER") == RFC8925_WAIT
+        assert not _wire_option_payloads(offer, OPTION_RAPID_COMMIT), (
+            "Fallback DHCPOFFER incorrectly contained Rapid Commit option 80"
+        )
+
+
+@given("the RFC 8925 observability fixture has a bounded IPv4 pool")
+def step_bounded_observability_pool(context):
+    candidates = _configured_pool_addresses()
+    assert 2 <= len(candidates) <= 8, (
+        "RFC 8925 observability requires a pool of 2-8 addresses; "
+        f"configured pool has {len(candidates)}"
+    )
+    _state(context)["pool_candidates"] = candidates
+
+
+@when("an RFC 8925 client requests an addressless option 108 response")
+def step_request_addressless_option_108(context):
+    _require_packet_support()
+    assert AsyncSniffer is not None and ICMP is not None and ARP is not None, (
+        "Scapy ICMP/ARP capture support is required for RFC 8925 observability"
+    )
+    state = _state(context)
+    pool_candidates = state.get("pool_candidates") or _configured_pool_addresses()
+    state.clear()
+    state["pool_candidates"] = pool_candidates
+    mac = _new_client_mac()
+    xid = _new_xid()
+    discover = build_client_packet(
+        mac,
+        xid,
+        [
+            ("message-type", "discover"),
+            (
+                "param_req_list",
+                STANDARD_PRL + [OPTION_IPV6_ONLY_PREFERRED],
+            ),
+            "end",
+        ],
+    )
+    sniffer = AsyncSniffer(
+        iface=INTERFACE,
+        lfilter=lambda packet: (
+            packet.haslayer(DHCP)
+            or packet.haslayer(ICMP)
+            or packet.haslayer(ARP)
+        ),
+        timeout=5,
+        promisc=True,
+    )
+    sniffer.start()
+    time.sleep(0.1)
+    sendp(discover, iface=INTERFACE, verbose=False)
+    sniffer.join()
+    packets = list(sniffer.results or [])
+    state["addressless_offers"] = _matching_captured_packets(
+        packets, 2, xid, mac, DHCP_SERVER_IP
+    )
+    state["addressless_acks"] = _matching_captured_packets(
+        packets, 5, xid, mac, DHCP_SERVER_IP
+    )
+    state["addressless_probes"] = [
+        packet
+        for packet in packets
+        if (
+            packet.haslayer(IP)
+            and packet.haslayer(ICMP)
+            and packet[IP].src == DHCP_SERVER_IP
+            and packet[IP].dst in pool_candidates
+            and packet[ICMP].type == 8
+        )
+        or (
+            packet.haslayer(ARP)
+            and packet[ARP].op == 1
+            and packet[ARP].pdst in pool_candidates
+        )
+    ]
+
+
+@then("the server sends an addressless DHCPOFFER without probing the pool")
+def step_addressless_offer_has_no_probe(context):
+    state = _state(context)
+    assert not state["addressless_acks"], (
+        "Addressless RFC 8925 discovery unexpectedly produced DHCPACK"
+    )
+    assert state["addressless_offers"], "No RFC 8925 DHCPOFFER was captured"
+    assert {offer[BOOTP].yiaddr for offer in state["addressless_offers"]} == {
+        "0.0.0.0"
+    }, "The addressless observability profile returned an IPv4 address"
+    for offer in state["addressless_offers"]:
+        assert _decode_wait(offer, "DHCPOFFER") == RFC8925_WAIT
+    assert not state["addressless_probes"], (
+        "Server sent an ICMP or ARP probe for a configured pool candidate "
+        "before an addressless response"
+    )
+
+
+@when("ordinary clients immediately acquire every configured pool address")
+def step_ordinary_clients_fill_pool(context):
+    candidates = _state(context)["pool_candidates"]
+    committed = []
+    for _candidate in candidates:
+        _complete_dora(context, STANDARD_PRL)
+        state = _state(context)
+        assert state.get("ack") is not None, "Ordinary client did not receive DHCPACK"
+        committed.append(state["ack"][BOOTP].yiaddr)
+    state["pool_candidates"] = candidates
+    state["committed_pool_addresses"] = committed
+
+
+@then("the bounded pool reaches full committed capacity")
+def step_bounded_pool_reaches_capacity(context):
+    state = _state(context)
+    committed = state["committed_pool_addresses"]
+    assert len(committed) == len(set(committed)), (
+        f"Ordinary clients did not receive unique leases: {committed}"
+    )
+    assert set(committed) == state["pool_candidates"], (
+        f"Committed {sorted(committed)}, expected every configured candidate "
+        f"{sorted(state['pool_candidates'])}"
+    )
