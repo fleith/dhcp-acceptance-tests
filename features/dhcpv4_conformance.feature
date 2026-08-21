@@ -13,6 +13,21 @@ Feature: DHCPv4 transaction safety and configuration behavior
     Then every matching acknowledgement preserves one binding
     And another DHCPv4 client receives a distinct active lease
 
+  @negative @offer_hold @ipv4_should_next @reference_offer_hold_divergence
+  Scenario: An unselected offer remains reserved for the original client
+    Given the DHCP server is running
+    When one DHCPv4 client leaves an offered address unselected
+    And another DHCPv4 client requests that held address
+    Then the second client is offered a different address
+    And the original client can still select the held address
+
+  @ipv4 @negative @known_divergence @non_compliance @ipv4_should_next_divergence
+  Scenario: Reference servers expose their unreserved offer behavior
+    Given the DHCP server is running
+    When one DHCPv4 client leaves an offered address unselected
+    And another DHCPv4 client requests that held address
+    Then the reference server reoffers the held address
+
   @concurrency
   Scenario: Concurrent clients receive independent bindings
     Given the DHCP server is running

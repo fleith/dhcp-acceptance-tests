@@ -22,6 +22,8 @@ DHCPV4_RESERVED_MAC="${DHCPV4_RESERVED_MAC:-02:00:00:ff:00:01}"
 DHCPV4_RESERVED_OFFSET="${DHCPV4_RESERVED_OFFSET:-50}"
 DHCPV4_CLASS_NAME="${DHCPV4_CLASS_NAME:-acceptance-class}"
 DHCPV4_RELAY_SUBNET="${DHCPV4_RELAY_SUBNET:-172.29.2.0/24}"
+DHCPV4_RELAY_POLICY_CIRCUIT="${DHCPV4_RELAY_POLICY_CIRCUIT:-slot=01/port=007}"
+DHCPV4_RELAY_POLICY_DOMAIN="${DHCPV4_RELAY_POLICY_DOMAIN:-opaque-circuit.acceptance.test}"
 DHCPV4_INJECT_OVERLAPPING_SUBNET="${DHCPV4_INJECT_OVERLAPPING_SUBNET:-0}"
 DHCPV4_OVERLAP_ORDER="${DHCPV4_OVERLAP_ORDER:-primary-first}"
 DHCPV4_FORCE_STORAGE_FAILURE="${DHCPV4_FORCE_STORAGE_FAILURE:-0}"
@@ -144,6 +146,8 @@ while [ "$_rfc3396_count" -lt 20 ]; do
     _rfc3396_count=$(( _rfc3396_count + 1 ))
 done
 
+DHCPV4_RELAY_POLICY_CIRCUIT_HEX=$(printf '%s' "$DHCPV4_RELAY_POLICY_CIRCUIT" | od -An -tx1 | tr -d ' \n')
+
 PING_CHECK_HOOKS='[]'
 if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ]; then
     PING_CHECK_LIBRARY=$(find /usr/lib /usr/local/lib -name libdhcp_ping_check.so -print -quit 2>/dev/null || true)
@@ -206,6 +210,13 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
         "test": "option[12].text == 'client-fragmented-hostname'",
         "option-data": [
           { "name": "domain-name", "data": "$DHCPV4_RFC3396_POLICY_DOMAIN" }
+        ]
+      },
+      {
+        "name": "rfc3046-opaque-circuit",
+        "test": "relay4[1].hex == 0x$DHCPV4_RELAY_POLICY_CIRCUIT_HEX",
+        "option-data": [
+          { "name": "domain-name", "data": "$DHCPV4_RELAY_POLICY_DOMAIN" }
         ]
       }
     ],

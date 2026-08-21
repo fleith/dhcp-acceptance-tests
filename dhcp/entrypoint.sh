@@ -24,6 +24,8 @@ DHCPV4_RESERVED_MAC="${DHCPV4_RESERVED_MAC:-02:00:00:ff:00:01}"
 DHCPV4_RESERVED_OFFSET="${DHCPV4_RESERVED_OFFSET:-50}"
 DHCPV4_CLASS_NAME="${DHCPV4_CLASS_NAME:-acceptance-class}"
 DHCPV4_RELAY_SUBNET="${DHCPV4_RELAY_SUBNET:-172.29.2.0/24}"
+DHCPV4_RELAY_POLICY_CIRCUIT="${DHCPV4_RELAY_POLICY_CIRCUIT:-slot=01/port=007}"
+DHCPV4_RELAY_POLICY_DOMAIN="${DHCPV4_RELAY_POLICY_DOMAIN:-opaque-circuit.acceptance.test}"
 DHCPV4_INJECT_OVERLAPPING_SUBNET="${DHCPV4_INJECT_OVERLAPPING_SUBNET:-0}"
 DHCPV4_FORCE_STORAGE_FAILURE="${DHCPV4_FORCE_STORAGE_FAILURE:-0}"
 DHCPV4_PING_CHECK_ENABLED="${DHCPV4_PING_CHECK_ENABLED:-0}"
@@ -163,6 +165,11 @@ class "acceptance-class" {
 class "rfc3396-reassembled-host-name" {
     match if option host-name = "client-fragmented-hostname";
     option domain-name "$DHCPV4_RFC3396_POLICY_DOMAIN";
+}
+
+class "rfc3046-opaque-circuit" {
+    match if option agent.circuit-id = "$DHCPV4_RELAY_POLICY_CIRCUIT";
+    option domain-name "$DHCPV4_RELAY_POLICY_DOMAIN";
 }
 
 host acceptance-reserved {
