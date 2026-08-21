@@ -13,6 +13,7 @@ IP="${IP_PREFIX%%/*}"
 PREFIX="${IP_PREFIX##*/}"
 ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
 RFC8925_WAIT="${RFC8925_WAIT:-1800}"
+DHCPV4_FQDN_SUFFIX="${DHCPV4_FQDN_SUFFIX:-dhcp-acceptance.test}"
 RFC3442_EXTRA_ROUTE_COUNT="${RFC3442_EXTRA_ROUTE_COUNT:-30}"
 DHCPV4_RFC3396_POLICY_DOMAIN="${DHCPV4_RFC3396_POLICY_DOMAIN:-rfc3396-reassembled.test}"
 DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
@@ -188,7 +189,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
       "enable-updates": true
     },
     "ddns-send-updates": true,
-    "ddns-qualifying-suffix": "dhcp-acceptance.test",
+    "ddns-qualifying-suffix": "$DHCPV4_FQDN_SUFFIX",
     "option-def": [
       {
         "name": "rfc3396-long-option",
@@ -240,7 +241,14 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
             "ip-address": "${NET3}.${DHCPV4_RESERVED_OFFSET}"
           }
         ],
-        "pools": [ { "pool": "${NET3}.${DHCPV4_POOL_START_OFFSET} - ${NET3}.${DHCPV4_POOL_END_OFFSET}" } ],
+        "pools": [
+          {
+            "pool": "${NET3}.${DHCPV4_POOL_START_OFFSET} - ${NET3}.${DHCPV4_POOL_END_OFFSET}",
+            "option-data": [
+              { "name": "v6-only-preferred", "data": "$RFC8925_WAIT" }
+            ]
+          }
+        ],
         "option-data": [
           { "name": "routers", "data": "${NET3}.1" },
           { "name": "subnet-mask", "data": "$NETMASK" },
@@ -250,7 +258,6 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
             "data": "$RFC3442_ROUTES",
             "csv-format": false
           },
-          { "name": "v6-only-preferred", "data": "$RFC8925_WAIT" },
           { "name": "rfc3396-long-option", "data": "$RFC3396_LONG_OPTION" }
         ]
       },

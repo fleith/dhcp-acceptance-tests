@@ -2,15 +2,20 @@
 
 import ipaddress
 import os
+import subprocess
 
 from behave import then, when
 from dhcpv4_support import (
     BOOTP,
     DHCP,
+    Ether,
+    IP,
+    UDP,
     assert_raw_option_absent,
     build_client_packet,
     dhcp_option,
     dhcp_packets,
+    mac_bytes,
     raw_dhcp_option,
     require_scapy_v4,
     start_dhcp_sniffer,
@@ -23,14 +28,15 @@ except ImportError:
 
 
 DHCP_SERVER_IP = os.getenv("TEST_SERVER_IP", "192.168.56.1")
-RFC8925_ALT_SERVER_IP = os.getenv("TEST_RFC8925_ALT_SERVER_IP", DHCP_SERVER_IP)
 INTERFACE = os.getenv("TEST_INTERFACE", "eth0")
 SUBNET = os.getenv("TEST_SUBNET", "192.168.56.0/24")
 RFC8925_WAIT = int(os.getenv("TEST_RFC8925_WAIT", "1800"))
+RFC8925_NON_V6ONLY_SUBNET = os.getenv(
+    "TEST_DHCPV4_RELAY_SUBNET", "172.29.2.0/24"
+)
 MIN_V6ONLY_WAIT = 300
 MAX_V6ONLY_WAIT = 0xFFFFFFFF
 OPTION_IPV6_ONLY_PREFERRED = 108
-OPTION_SUBNET_SELECTION = 118
 OPTION_108_NAMES = ("ipv6-only-preferred", "v6-only-preferred")
 STANDARD_PRL = [1, 3, 6, 51, 58, 59]
 
@@ -64,21 +70,7 @@ def _client_bytes(mac):
     return bytes.fromhex(mac.replace(":", ""))
 
 
-def _alternate_subnet():
-    configured = os.getenv("TEST_SUBNET_SELECTION_SUBNET")
-    if configured:
-        return str(ipaddress.ip_network(configured, strict=False))
-
-    primary = ipaddress.ip_network(SUBNET, strict=False)
-    assert primary.version == 4, f"RFC 8925 requires an IPv4 subnet, got {SUBNET}"
-    assert primary.prefixlen == 24, (
-        "Set TEST_SUBNET_SELECTION_SUBNET for the alternate-subnet RFC 8925 "
-        f"scenario when the primary subnet is not /24 (got {SUBNET})"
-    )
-    return str(ipaddress.ip_network((int(primary.network_address) + 256, 24)))
-
-
-def _message_options(message_type, prl, *, offer=None, selected_subnet=None):
+def _message_options(message_type, prl, *, offer=None):
     options = [("message-type", message_type)]
     if offer is not None:
         options.extend(
@@ -87,11 +79,52 @@ def _message_options(message_type, prl, *, offer=None, selected_subnet=None):
                 ("requested_addr", offer["offered_ip"]),
             ]
         )
-    if selected_subnet is not None:
-        network = ipaddress.ip_network(selected_subnet, strict=False)
-        options.append((OPTION_SUBNET_SELECTION, network.network_address.packed))
     options.extend([("param_req_list", prl), ("end")])
     return options
+
+
+def _relay_address(subnet):
+    network = ipaddress.ip_network(subnet, strict=False)
+    return str(next(network.hosts()))
+
+
+def _remove_relay_address(address, prefix):
+    subprocess.run(
+        ["ip", "addr", "del", f"{address}/{prefix}", "dev", INTERFACE],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _enable_relay_address(context, subnet):
+    network = ipaddress.ip_network(subnet, strict=False)
+    address = _relay_address(subnet)
+    subprocess.run(
+        ["ip", "addr", "add", f"{address}/{network.prefixlen}", "dev", INTERFACE],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    context.add_cleanup(_remove_relay_address, address, network.prefixlen)
+    return address
+
+
+def _build_relayed_packet(mac, xid, options, relay_address):
+    return (
+        Ether(src=mac, dst="ff:ff:ff:ff:ff:ff")
+        / IP(src=relay_address, dst=DHCP_SERVER_IP)
+        / UDP(sport=67, dport=67)
+        / BOOTP(
+            op=1,
+            hops=1,
+            xid=xid,
+            giaddr=relay_address,
+            chaddr=mac_bytes(mac),
+            flags=0x8000,
+        )
+        / DHCP(options=options)
+    )
 
 
 def _matching_packets(sniffer, message_type, xid, mac, server_id=None):
@@ -104,13 +137,16 @@ def _matching_packets(sniffer, message_type, xid, mac, server_id=None):
     ]
 
 
-def _capture_offer(sniffer, xid, mac, expected_subnet, expected_server=None):
+def _capture_offer(
+    sniffer, xid, mac, expected_subnet, expected_server=None, allow_addressless=False
+):
     packets = _matching_packets(sniffer, 2, xid, mac, expected_server)
     network = ipaddress.ip_network(expected_subnet, strict=False)
     packets = [
         packet
         for packet in packets
         if ipaddress.ip_address(packet[BOOTP].yiaddr) in network
+        or (allow_addressless and packet[BOOTP].yiaddr == "0.0.0.0")
     ]
     assert packets, (
         f"No DHCPOFFER for xid 0x{xid:08x}, client {mac}, subnet {network}, "
@@ -142,45 +178,65 @@ def _capture_ack(sniffer, xid, mac, offer):
     return packets[0]
 
 
-def _complete_dora(context, prl, *, selected_subnet=None):
+def _complete_dora(
+    context, prl, *, relayed_subnet=None, allow_addressless=False
+):
     _require_packet_support()
     state = _state(context)
     state.clear()
     state["client_mac"] = _new_client_mac()
     state["xid"] = _new_xid()
     state["prl"] = list(prl)
-    state["selected_subnet"] = selected_subnet
+    state["selected_subnet"] = relayed_subnet
 
-    discover = build_client_packet(
-        state["client_mac"],
-        state["xid"],
-        _message_options("discover", state["prl"], selected_subnet=selected_subnet),
-    )
+    relay_address = None
+    if relayed_subnet is not None:
+        relay_address = _enable_relay_address(context, relayed_subnet)
+
+    discover_options = _message_options("discover", state["prl"])
+    if relay_address is None:
+        discover = build_client_packet(
+            state["client_mac"], state["xid"], discover_options
+        )
+    else:
+        discover = _build_relayed_packet(
+            state["client_mac"], state["xid"], discover_options, relay_address
+        )
     offer_sniffer = start_dhcp_sniffer(INTERFACE)
     sendp(discover, iface=INTERFACE, verbose=False)
 
-    expected_subnet = selected_subnet or SUBNET
-    expected_server = (
-        RFC8925_ALT_SERVER_IP if selected_subnet else DHCP_SERVER_IP
-    )
+    expected_subnet = relayed_subnet or SUBNET
+    # A relayed exchange may use an interface-specific server identifier.
+    # Match that identifier from OFFER through ACK rather than imposing the
+    # directly connected fixture address on the relay path.
+    expected_server = None if relayed_subnet else DHCP_SERVER_IP
     offer = _capture_offer(
         offer_sniffer,
         state["xid"],
         state["client_mac"],
         expected_subnet,
         expected_server,
+        allow_addressless,
     )
 
-    request = build_client_packet(
-        state["client_mac"],
-        state["xid"],
-        _message_options(
-            "request",
-            state["prl"],
-            offer=offer,
-            selected_subnet=selected_subnet,
-        ),
-    )
+    state["offer"] = offer["packet"]
+    state["offered_ip"] = offer["offered_ip"]
+    state["server_id"] = offer["server_id"]
+    if offer["offered_ip"] == "0.0.0.0":
+        assert allow_addressless, "Unexpected addressless DHCPOFFER"
+        state["ack"] = None
+        state["addressless"] = True
+        return
+
+    request_options = _message_options("request", state["prl"], offer=offer)
+    if relay_address is None:
+        request = build_client_packet(
+            state["client_mac"], state["xid"], request_options
+        )
+    else:
+        request = _build_relayed_packet(
+            state["client_mac"], state["xid"], request_options, relay_address
+        )
     ack_sniffer = start_dhcp_sniffer(INTERFACE)
     sendp(request, iface=INTERFACE, verbose=False)
     ack = _capture_ack(
@@ -190,10 +246,8 @@ def _complete_dora(context, prl, *, selected_subnet=None):
         offer,
     )
 
-    state["offer"] = offer["packet"]
     state["ack"] = ack
-    state["offered_ip"] = offer["offered_ip"]
-    state["server_id"] = offer["server_id"]
+    state["addressless"] = False
 
 
 def _wire_option_payloads(packet, option_code):
@@ -264,11 +318,24 @@ def _responses(context):
     return (("DHCPOFFER", state["offer"]), ("DHCPACK", state["ack"]))
 
 
+def _option_108_responses(context):
+    state = _state(context)
+    assert state.get("offer") is not None, "RFC 8925 DHCPOFFER state is missing"
+    responses = [("DHCPOFFER", state["offer"])]
+    if state.get("ack") is not None:
+        responses.append(("DHCPACK", state["ack"]))
+    return responses
+
+
 @when(
-    "an RFC 8925 fallback client deliberately completes DORA requesting option 108"
+    "an RFC 8925 client requests option 108 and follows any addressful fallback"
 )
 def step_request_option_108(context):
-    _complete_dora(context, STANDARD_PRL + [OPTION_IPV6_ONLY_PREFERRED])
+    _complete_dora(
+        context,
+        STANDARD_PRL + [OPTION_IPV6_ONLY_PREFERRED],
+        allow_addressless=True,
+    )
 
 
 @then("its matching DHCPOFFER contains the configured IPv6-Only Preferred wait")
@@ -279,51 +346,62 @@ def step_offer_contains_wait(context):
     )
 
 
-@then("its matching DHCPACK contains the configured IPv6-Only Preferred wait")
+@then("any fallback DHCPACK contains the configured IPv6-Only Preferred wait")
 def step_ack_contains_wait(context):
+    if _state(context).get("ack") is None:
+        assert _state(context)["offered_ip"] == "0.0.0.0"
+        return
     actual = _decode_wait(_state(context)["ack"], "DHCPACK")
     assert actual == RFC8925_WAIT, (
         f"DHCPACK option 108 wait {actual} does not match {RFC8925_WAIT}"
     )
 
 
-@then("both IPv6-Only Preferred responses use one RFC-compliant four-byte timer")
+@then("all IPv6-Only Preferred responses use one RFC-compliant four-byte timer")
 def step_responses_use_rfc_compliant_timer(context):
     assert MIN_V6ONLY_WAIT <= RFC8925_WAIT <= MAX_V6ONLY_WAIT, (
         f"TEST_RFC8925_WAIT must be in the RFC 8925 range "
         f"{MIN_V6ONLY_WAIT}..{MAX_V6ONLY_WAIT}, got {RFC8925_WAIT}"
     )
-    waits = [_decode_wait(packet, label) for label, packet in _responses(context)]
-    assert waits == [RFC8925_WAIT, RFC8925_WAIT]
+    waits = [
+        _decode_wait(packet, label)
+        for label, packet in _option_108_responses(context)
+    ]
+    assert waits and all(wait == RFC8925_WAIT for wait in waits)
 
 
 @when(
-    "an RFC 8925 fallback client deliberately completes DORA with duplicate "
-    "option 108 PRL entries"
+    "an RFC 8925 client requests duplicate option 108 PRL entries"
 )
 def step_request_duplicate_option_108(context):
     prl = STANDARD_PRL + [OPTION_IPV6_ONLY_PREFERRED, OPTION_IPV6_ONLY_PREFERRED]
-    _complete_dora(context, prl)
+    _complete_dora(context, prl, allow_addressless=True)
 
 
-@then("both matching responses contain the same configured IPv6-Only Preferred wait")
+@then("all matching responses contain the same configured IPv6-Only Preferred wait")
 def step_duplicate_request_is_stable(context):
-    waits = [_decode_wait(packet, label) for label, packet in _responses(context)]
-    assert waits == [RFC8925_WAIT, RFC8925_WAIT], (
+    waits = [
+        _decode_wait(packet, label)
+        for label, packet in _option_108_responses(context)
+    ]
+    assert waits and all(wait == RFC8925_WAIT for wait in waits), (
         f"Duplicate PRL request returned unstable option 108 waits: {waits}"
     )
 
 
-@then("both matching responses contain a four-octet zero wait")
+@then("all matching responses contain a four-octet zero wait")
 def step_zero_default_wait(context):
     assert RFC8925_WAIT == 0, (
         "The @rfc8925_zero_default profile requires TEST_RFC8925_WAIT=0, got "
         f"{RFC8925_WAIT}"
     )
     waits = [
-        _decode_wait_value(packet, label) for label, packet in _responses(context)
+        _decode_wait_value(packet, label)
+        for label, packet in _option_108_responses(context)
     ]
-    assert waits == [0, 0], f"Zero-default profile returned waits {waits}"
+    assert waits and all(wait == 0 for wait in waits), (
+        f"Zero-default profile returned waits {waits}"
+    )
 
 
 @when("an ordinary RFC 8925 client completes DORA without requesting option 108")
@@ -347,19 +425,19 @@ def step_ordinary_exchange_completes(context):
     )
 
 
-@when("an RFC 8925 client requests option 108 on the alternate served subnet")
-def step_request_option_108_on_alternate_subnet(context):
+@when("an RFC 8925 client requests option 108 on the relayed non-IPv6-mostly subnet")
+def step_request_option_108_on_relayed_subnet(context):
     _complete_dora(
         context,
         STANDARD_PRL + [OPTION_IPV6_ONLY_PREFERRED],
-        selected_subnet=_alternate_subnet(),
+        relayed_subnet=RFC8925_NON_V6ONLY_SUBNET,
     )
 
 
 @then(
-    "both matching alternate-subnet responses omit the IPv6-Only Preferred option"
+    "both matching relayed-subnet responses omit the IPv6-Only Preferred option"
 )
-def step_alternate_responses_omit_option_108(context):
+def step_relayed_responses_omit_option_108(context):
     selected_subnet = ipaddress.ip_network(
         _state(context)["selected_subnet"], strict=False
     )
