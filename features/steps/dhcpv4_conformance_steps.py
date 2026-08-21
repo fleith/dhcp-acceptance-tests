@@ -22,15 +22,16 @@ from dhcpv4_support import (
     mac_bytes,
     option_bytes,
     raw_dhcp_option,
+    raw_dhcp_option_areas,
     raw_dhcp_option_fragments,
     require_scapy_v4,
     start_dhcp_sniffer,
 )
 
 try:
-    from scapy.all import AsyncSniffer, Raw, sendp
+    from scapy.all import AsyncSniffer, Raw, getmacbyip, sendp
 except ImportError:
-    AsyncSniffer = Raw = sendp = None
+    AsyncSniffer = Raw = getmacbyip = sendp = None
 
 try:
     import dns.resolver
@@ -56,6 +57,15 @@ PERSISTENT_MAC = "02:00:00:fe:00:01"
 PERSISTENT_CLIENT_ID = b"\xffacceptance-persistent-client"
 PARAMETER_REQUEST_LIST = [1, 3, 6, 15, 51, 58, 59]
 RELAY_OPTION = b"\x01\x08circuit1\x02\x08remote01"
+RELAY_POLICY_CIRCUIT = os.getenv(
+    "TEST_DHCPV4_RELAY_POLICY_CIRCUIT", "slot=01/port=007"
+).encode()
+RELAY_POLICY_LOOKALIKE = os.getenv(
+    "TEST_DHCPV4_RELAY_POLICY_LOOKALIKE", "slot=01/port=7"
+).encode()
+RELAY_POLICY_DOMAIN = os.getenv(
+    "TEST_DHCPV4_RELAY_POLICY_DOMAIN", "opaque-circuit.acceptance.test"
+).encode()
 RFC3396_LONG_OPTION_CODE = 224
 RFC3396_LONG_OPTION = b"0123456789abcdef" * 20
 RELOADED_CLASS_DOMAIN = os.getenv(
@@ -346,6 +356,56 @@ def step_second_client_distinct(context):
     )
 
 
+@when("one DHCPv4 client leaves an offered address unselected")
+def step_leave_offer_unselected(context):
+    _ensure_cleanup(context)
+    discovery = _discover(_new_mac())
+    assert discovery["offers"], "Original client received no DHCPOFFER"
+    offered = {packet[BOOTP].yiaddr for packet in discovery["offers"]}
+    assert len(offered) == 1, f"Original client received conflicting offers: {offered}"
+    state = _state(context)
+    state["held_discovery"] = discovery
+    state["held_ip"] = offered.pop()
+
+
+@when("another DHCPv4 client requests that held address")
+def step_request_held_offer(context):
+    state = _state(context)
+    contender = _discover(_new_mac(), requested=state["held_ip"])
+    assert contender["offers"], "Second client received no alternative DHCPOFFER"
+    state["contender_discovery"] = contender
+
+
+@then("the second client is offered a different address")
+def step_contender_gets_different_offer(context):
+    state = _state(context)
+    contender_addresses = {
+        packet[BOOTP].yiaddr for packet in state["contender_discovery"]["offers"]
+    }
+    assert state["held_ip"] not in contender_addresses, (
+        f"Server re-offered held address {state['held_ip']} to another client"
+    )
+
+
+@then("the reference server reoffers the held address")
+def step_reference_reoffers_held_address(context):
+    state = _state(context)
+    contender_addresses = {
+        packet[BOOTP].yiaddr for packet in state["contender_discovery"]["offers"]
+    }
+    assert state["held_ip"] in contender_addresses, (
+        f"Reference server unexpectedly reserved offered address {state['held_ip']}"
+    )
+
+
+@then("the original client can still select the held address")
+def step_original_client_selects_held_offer(context):
+    state = _state(context)
+    lease = _request(state["held_discovery"])
+    assert lease["ip"] == state["held_ip"]
+    state["active"].append(lease)
+
+
 @when("multiple DHCPv4 clients acquire leases concurrently")
 def step_concurrent_clients(context):
     _ensure_cleanup(context)
@@ -605,7 +665,14 @@ def step_relay_address(context):
 
 
 def _relayed_packet(
-    mac, xid, message_type, *, requested=None, server_id=None, force_overload=False
+    mac,
+    xid,
+    message_type,
+    *,
+    requested=None,
+    server_id=None,
+    force_overload=False,
+    relay_option=RELAY_OPTION,
 ):
     options = [("message-type", message_type)]
     if server_id is not None:
@@ -618,7 +685,7 @@ def _relayed_packet(
         options.append(("max_dhcp_size", 576))
     options.extend([
         ("param_req_list", parameter_request_list),
-        (82, RELAY_OPTION),
+        (82, relay_option),
         "end",
     ])
     return (
@@ -724,6 +791,119 @@ def step_relay_ack_address(context):
 @then("the acknowledgement preserves giaddr and echoes Relay Agent Information verbatim")
 def step_relay_ack_metadata(context):
     _assert_relay_metadata(_state(context)["relay_ack"], "DHCPACK")
+
+
+@then("both relay responses place Relay Agent Information last")
+def step_relay_information_is_last(context):
+    state = _state(context)
+    for label, packet in (("DHCPOFFER", state["relay_offer"]), ("DHCPACK", state["relay_ack"])):
+        areas = raw_dhcp_option_areas(packet)
+        assert areas and areas[0][0] == "options", f"{label} has no main DHCP option area"
+        option_codes = [code for code, _ in areas[0][1]]
+        assert option_codes.count(82) == 1, (
+            f"{label} must contain exactly one Relay Agent Information option: {option_codes}"
+        )
+        assert option_codes[-1] == 82, (
+            f"{label} placed options after Relay Agent Information: {option_codes}"
+        )
+
+
+@when("the bound client renews directly by unicast with Relay Agent Information")
+def step_unicast_renewal_with_relay_information(context):
+    state = _state(context)
+    lease = state["ordinary_lease"]
+    server_mac = getmacbyip(SERVER_IP)
+    assert server_mac, f"Could not resolve the DHCP server MAC for {SERVER_IP}"
+    xid = _new_xid()
+    renewal = build_client_packet(
+        lease["mac"],
+        xid,
+        [
+            ("message-type", "request"),
+            ("param_req_list", PARAMETER_REQUEST_LIST),
+            (82, RELAY_OPTION),
+            "end",
+        ],
+        ciaddr=lease["ip"],
+        source_ip=lease["ip"],
+        destination_ip=SERVER_IP,
+        destination_mac=server_mac,
+        flags=0,
+    )
+    responses = _capture_packets(
+        [renewal], xid, {5, 6}, mac=lease["mac"], timeout=5
+    )
+    assert not [packet for packet in responses if _message_type(packet) == 6], (
+        "Server rejected a unicast renewal carrying Relay Agent Information"
+    )
+    acknowledgements = [
+        packet for packet in responses if _message_type(packet) == 5
+    ]
+    assert acknowledgements, (
+        "Server did not acknowledge a unicast renewal carrying Relay Agent Information"
+    )
+    state["unicast_relay_ack"] = acknowledgements[0]
+
+
+@then("the unicast renewal is acknowledged with Relay Agent Information unchanged")
+def step_unicast_relay_information_echoed(context):
+    packet = _state(context)["unicast_relay_ack"]
+    value = raw_dhcp_option(
+        packet,
+        82,
+        ("relay_agent_information", "relay_agent_Information"),
+    )
+    assert value is not None, "Unicast DHCPACK omitted Relay Agent Information"
+    assert option_bytes(value) == RELAY_OPTION, (
+        f"Unicast DHCPACK changed Relay Agent Information: {option_bytes(value)!r}"
+    )
+
+
+def _relay_option(circuit_id):
+    assert len(circuit_id) <= 255
+    remote_id = b"opaque-policy-client"
+    return (
+        bytes((1, len(circuit_id)))
+        + circuit_id
+        + bytes((2, len(remote_id)))
+        + remote_id
+    )
+
+
+def _policy_offer(circuit_id):
+    mac = _new_mac()
+    xid = _new_xid()
+    discover = _relayed_packet(
+        mac,
+        xid,
+        "discover",
+        relay_option=_relay_option(circuit_id),
+    )
+    responses = _capture_packets([discover], xid, {2, 5, 6}, mac=mac)
+    offers = [packet for packet in responses if _message_type(packet) == 2]
+    assert offers, f"No DHCPOFFER for Circuit ID {circuit_id!r}"
+    return offers[0]
+
+
+@when("relayed clients use exact and lookalike opaque Circuit IDs")
+def step_exact_and_lookalike_circuit_ids(context):
+    assert RELAY_POLICY_CIRCUIT != RELAY_POLICY_LOOKALIKE
+    state = _state(context)
+    state["exact_policy_offer"] = _policy_offer(RELAY_POLICY_CIRCUIT)
+    state["lookalike_policy_offer"] = _policy_offer(RELAY_POLICY_LOOKALIKE)
+
+
+@then("only the exact Circuit ID receives the configured relay policy")
+def step_only_exact_circuit_id_matches(context):
+    state = _state(context)
+    exact = raw_dhcp_option(state["exact_policy_offer"], 15, ("domain",))
+    lookalike = raw_dhcp_option(state["lookalike_policy_offer"], 15, ("domain",))
+    assert option_bytes(exact) == RELAY_POLICY_DOMAIN, (
+        f"Exact Circuit ID did not activate relay policy: {option_bytes(exact)!r}"
+    )
+    assert option_bytes(lookalike) != RELAY_POLICY_DOMAIN, (
+        "Lookalike Circuit ID activated an exact-match relay policy"
+    )
 
 
 @when("an ordinary DHCPv4 client completes DORA without Relay Agent Information")

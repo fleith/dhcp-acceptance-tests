@@ -315,33 +315,39 @@ def step_responses_split_oversized_route_option(context):
         assert _decode_classless_routes(packet) == _expected_routes()
 
 
-@then("the configured classless default route is distinct from any legacy Router option")
-def step_classless_default_is_distinct(context):
-    expected_default = _parse_route(DEFAULT_ROUTE)
+@then("both RFC 3442 responses omit legacy Router and Static Route options")
+def step_classless_routes_omit_legacy_options(context):
     for label, packet in (
         ("DHCPOFFER", _state(context).get("offer")),
         ("DHCPACK", _state(context).get("ack")),
     ):
         routes = _decode_classless_routes(packet)
         defaults = [route for route in routes if route[0] == "0.0.0.0/0"]
-        assert defaults == [expected_default], (
+        assert defaults == [_parse_route(DEFAULT_ROUTE)], (
             f"{label} did not return the configured RFC 3442 default route: "
             f"{defaults!r}"
         )
+        for option_code, option_name in ((3, "Router"), (33, "Static Route")):
+            payloads = _dhcp_tlv_payloads(packet, option_code)
+            assert not payloads, (
+                f"{label} included legacy {option_name} option {option_code} "
+                "alongside Classless Static Route option 121"
+            )
 
-        legacy_router_data = b"".join(_dhcp_tlv_payloads(packet, 3))
-        if legacy_router_data:
-            assert len(legacy_router_data) % 4 == 0, (
-                f"{label} contains a malformed legacy Router option"
-            )
-            legacy_routers = [
-                str(ipaddress.IPv4Address(legacy_router_data[offset:offset + 4]))
-                for offset in range(0, len(legacy_router_data), 4)
-            ]
-            assert expected_default[1] not in legacy_routers, (
-                "RFC 3442 fixture requires a classless default distinct "
-                f"from legacy routers, got {legacy_routers!r}"
-            )
+
+@then("at least one RFC 3442 response includes the known legacy Router option")
+def step_known_legacy_router_divergence(context):
+    responses = (
+        ("DHCPOFFER", _state(context).get("offer")),
+        ("DHCPACK", _state(context).get("ack")),
+    )
+    included = [
+        label for label, packet in responses if _dhcp_tlv_payloads(packet, 3)
+    ]
+    assert included, (
+        "Kea no longer exposes the expected legacy Router option divergence; "
+        "enable the strict RFC 3442 scenario for this backend"
+    )
 
 
 @when("a client sends DHCPDISCOVER with duplicated and unknown RFC 3442 PRL codes")

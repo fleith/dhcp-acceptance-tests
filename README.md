@@ -147,6 +147,8 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `DHCPV4_POOL_START_OFFSET` | `100` | First /24 host offset in the primary DHCPv4 pool |
 | `DHCPV4_POOL_END_OFFSET` | `200` | Last /24 host offset in the primary DHCPv4 pool |
 | `DHCPV4_ALT_POOL_ENABLED` | `1` | Set to `0` only in isolated exhaustion runs so the RFC 3011 alternate pool cannot provide fallback capacity |
+| `DHCPV4_RELAY_POLICY_CIRCUIT` | `slot=01/port=007` | Exact opaque Circuit ID that activates the RFC 3046 relay policy fixture |
+| `DHCPV4_RELAY_POLICY_DOMAIN` | `opaque-circuit.acceptance.test` | Domain option returned only for the exact relay-policy Circuit ID |
 | `RFC3442_EXTRA_ROUTE_COUNT` | `30` | Extra /24 routes that force Classless Static Route option 121 above 255 octets |
 | `RFC8925_WAIT` | `1800` | Configured IPv6-Only Preferred wait; the isolated zero-default profile sets this to `0` |
 | `TEST_DHCPV4_EXHAUSTION_LIMIT` | `16` | Safety limit for an explicitly selected pool-exhaustion run |
@@ -193,13 +195,13 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 Server-focused coverage spans 12 RFCs: the existing eight plus RFC 3442,
 RFC 4361, RFC 4704, and RFC 8925.
 
-- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate.
+- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling, direct offer-hold enforcement for target services, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate. ISC DHCP 4.4.1 and Kea 2.2 reoffer an unselected address; that reference behavior is captured as a known divergence.
 - **RFC 2131 pool capacity**: a dedicated bounded run exhausts the DHCPv4 pool, verifies that an additional client receives no offer, releases one lease, and proves the waiting client can acquire that address.
 - **RFC 2132**: required network options, raw Subnet Mask/Router ordering, multi-address DNS encoding, and exact lease-time option length alongside T1/T2 timer validation.
 - **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path with exact response echo on Kea in the multi-subnet Docker topology.
-- **RFC 3046**: Relay Agent Information (Option 82) echo, byte preservation, omission for ordinary clients, and raw validation that relay metadata never moves into overloaded BOOTP fields.
+- **RFC 3046**: Relay Agent Information (Option 82) echo, byte preservation, last-option ordering, omission for ordinary clients, direct unicast renewal handling, opaque Circuit-ID policy matching, and raw validation that relay metadata never moves into overloaded BOOTP fields.
 - **RFC 3396**: semantic request-fragment reassembly through class policy plus exact reconstruction of a 320-octet response option split into sequential fragments. Kea 2.2's request-policy divergence is explicitly documented.
-- **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, unusual parameter request lists, and exact RFC 3396 reconstruction of an oversized option 121. Kea 3.0.3 and 3.2.0 currently reject the oversized option instead of splitting it, which the compatibility matrix records explicitly.
+- **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, suppression of requested legacy Router and Static Route options, unusual parameter request lists, and exact RFC 3396 reconstruction of an oversized option 121. Kea 2.2 still returns legacy Router option 3, while Kea 3.0.3 and 3.2.0 reject the oversized option instead of splitting it; both behaviors are recorded explicitly.
 - **RFC 4361**: node-specific DHCPv4 client identifiers, stable identity across hardware changes, IAID/DUID isolation, and malformed identifier recovery.
 - **RFC 4702**: Client FQDN option negotiation with raw DNS/ASCII encoding and E-flag preservation, plus capability-gated proof that DNS publication waits for lease commitment.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation. Kea runs the positive negotiation scenarios; ISC runs only the universal omission checks in this fixture. A tagged, default-excluded known divergence documents that Kea 2.2 returns FQDN without an ORO request.
