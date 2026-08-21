@@ -553,8 +553,8 @@ jobs:
             server_version: kea-lts
             ip_version: v4
             extra_args: ""
-            expected_failure_pattern: dhcp_rfc8925_ipv6_only_preferred
-            expected_failure_pattern_2: dhcp_rfc3442_classless_routes
+            expected_failure_pattern: dhcp_rfc3442_classless_routes
+            expected_failure_pattern_2: ""
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.0.3 LTS / v6
@@ -580,8 +580,8 @@ jobs:
             server_version: kea-stable
             ip_version: v4
             extra_args: ""
-            expected_failure_pattern: dhcp_rfc8925_ipv6_only_preferred
-            expected_failure_pattern_2: dhcp_rfc3442_classless_routes
+            expected_failure_pattern: dhcp_rfc3442_classless_routes
+            expected_failure_pattern_2: ""
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.2.0 stable / v6

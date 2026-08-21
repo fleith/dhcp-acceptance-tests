@@ -1017,6 +1017,23 @@ def step_then_subnet_selection_echoed(context):
         )
 
 
+@then('no selected-subnet response contains an address outside that subnet')
+def step_then_no_selected_subnet_response_escapes(context):
+    selected = ipaddress.ip_network(
+        context_storage['rfc3011_selected_subnet'], strict=False
+    )
+    responses = (
+        ('DHCPOFFER', context_storage.get('rfc3011_offer_packet')),
+        ('DHCPACK', context_storage.get('ack_packet')),
+    )
+    for label, packet in responses:
+        assert packet is not None, f"Missing {label} for RFC 3011 scope check"
+        address = ipaddress.ip_address(packet[BOOTP].yiaddr)
+        assert address in selected, (
+            f"{label} returned {address} outside selected subnet {selected}"
+        )
+
+
 @when('a client sends a DHCPDISCOVER with Relay Agent Information option')
 def step_when_discover_with_option82(context):
     if Ether is None:
@@ -1292,6 +1309,12 @@ def step_then_same_ip_for_client_id(context):
 # labels instead of the legacy ASCII form. Client RCODE fields are always zero.
 _RFC4702_FQDN_LABEL = b'testclient'
 _RFC4702_FQDN_TEXT = b'testclient.example.com'
+_RFC4702_SUFFIX = os.getenv(
+    'TEST_RFC4702_SUFFIX', 'dhcp-acceptance.test'
+).strip('.')
+_RFC4702_PARTIAL_LABEL = 'partial-client'
+_RFC4702_OPTION81_NAME = f'fqdn-wins.{_RFC4702_SUFFIX}'
+_RFC4702_CONFLICTING_HOST_NAME = b'host-name-loses'
 
 
 def _rfc4702_client_option(encoding):
@@ -1301,6 +1324,19 @@ def _rfc4702_client_option(encoding):
     if normalized == 'ascii':
         return b'\x01\x00\x00' + _RFC4702_FQDN_TEXT
     raise AssertionError(f"Unsupported RFC 4702 encoding {encoding!r}")
+
+
+def _rfc4702_dns_option(name, *, terminated=True):
+    labels = name.strip('.').split('.')
+    encoded = bytearray()
+    for label in labels:
+        value = label.encode('ascii')
+        assert 1 <= len(value) <= 63, f"Invalid RFC 4702 DNS label {label!r}"
+        encoded.extend((len(value),))
+        encoded.extend(value)
+    if terminated:
+        encoded.append(0)
+    return b'\x05\x00\x00' + bytes(encoded)
 
 
 def _decode_rfc4702_name(payload, dns_encoded):
@@ -1334,56 +1370,70 @@ def _decode_rfc4702_name(payload, dns_encoded):
     raise AssertionError("DNS Client FQDN is missing its root label")
 
 
-@when('a client completes a DORA exchange using {encoding} Client FQDN encoding')
-def step_when_dora_with_fqdn_encoding(context, encoding):
+def _rfc4702_exchange(fqdn_option, *, host_name=None):
     if Ether is None:
         raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
     mac = _client_mac()
     xid = int.from_bytes(os.urandom(4), 'big')
-    fqdn_option = _rfc4702_client_option(encoding)
+
+    discover_options = [('message-type', 'discover')]
+    if host_name is not None:
+        discover_options.append((12, host_name))
+    discover_options.extend([
+        (81, fqdn_option),
+        ('param_req_list', [1, 3, 6, 12, 51, 58, 59, 81]),
+        ('end'),
+    ])
     discover = (
         Ether(src=mac, dst="ff:ff:ff:ff:ff:ff") /
         IP(src="0.0.0.0", dst="255.255.255.255") /
         UDP(sport=68, dport=67) /
         BOOTP(chaddr=_mac_bytes(mac), flags=0x8000, xid=xid) /
-        DHCP(options=[
-            ('message-type', 'discover'),
-            (81, fqdn_option),
-            ('param_req_list', [1, 3, 6, 51, 58, 59]),
-            ('end'),
-        ])
+        DHCP(options=discover_options)
     )
     discover_sniffer = _start_dhcp_sniffer()
     sendp(discover, iface=INTERFACE, verbose=False)
-    offer_pkts = _dhcp_packets(discover_sniffer, msg_type=2, xid=xid, server_id=DHCP_SERVER_IP)
+    offer_pkts = _dhcp_packets(
+        discover_sniffer, msg_type=2, xid=xid, server_id=DHCP_SERVER_IP
+    )
     assert offer_pkts, f"No DHCPOFFER from {DHCP_SERVER_IP}"
     offered_ip = offer_pkts[0][BOOTP].yiaddr
     assert ipaddress.ip_address(offered_ip) in ipaddress.ip_network(SUBNET), \
         f"Offered IP {offered_ip} not in subnet {SUBNET}"
 
-    # The REQUEST must also carry option 81: RFC 4702 negotiation is per-message,
-    # so the server only echoes the FQDN option into the DHCPACK when the
-    # accepted REQUEST itself contains one.
+    request_options = [
+        ('message-type', 'request'),
+        ('server_id', DHCP_SERVER_IP),
+        ('requested_addr', offered_ip),
+    ]
+    if host_name is not None:
+        request_options.append((12, host_name))
+    request_options.extend([
+        (81, fqdn_option),
+        ('param_req_list', [1, 3, 6, 12, 51, 58, 59, 81]),
+        ('end'),
+    ])
     request = (
         Ether(src=mac, dst="ff:ff:ff:ff:ff:ff") /
         IP(src="0.0.0.0", dst="255.255.255.255") /
         UDP(sport=68, dport=67) /
         BOOTP(chaddr=_mac_bytes(mac), flags=0x8000, xid=xid) /
-        DHCP(options=[
-            ('message-type', 'request'),
-            ('server_id', DHCP_SERVER_IP),
-            ('requested_addr', offered_ip),
-            (81, fqdn_option),
-            ('param_req_list', [1, 3, 6, 51, 58, 59]),
-            ('end'),
-        ])
+        DHCP(options=request_options)
     )
     request_sniffer = _start_dhcp_sniffer()
     sendp(request, iface=INTERFACE, verbose=False)
-    ack_pkts = _dhcp_packets(request_sniffer, msg_type=5, xid=xid, server_id=DHCP_SERVER_IP)
+    ack_pkts = _dhcp_packets(
+        request_sniffer, msg_type=5, xid=xid, server_id=DHCP_SERVER_IP
+    )
     assert ack_pkts, "No DHCPACK received"
-    context_storage['rfc4702_encoding'] = encoding.strip().lower()
     context_storage['rfc4702_responses'] = [offer_pkts[0], ack_pkts[0]]
+
+
+@when('a client completes a DORA exchange using {encoding} Client FQDN encoding')
+def step_when_dora_with_fqdn_encoding(context, encoding):
+    fqdn_option = _rfc4702_client_option(encoding)
+    _rfc4702_exchange(fqdn_option)
+    context_storage['rfc4702_encoding'] = encoding.strip().lower()
 
 
 @then('the DHCPACK preserves {encoding} Client FQDN encoding')
@@ -1408,3 +1458,72 @@ def step_then_responses_preserve_fqdn_encoding(context, encoding):
         assert decoded_name.split('.', 1)[0].encode('ascii') == _RFC4702_FQDN_LABEL, (
             f"{label} returned unexpected Client FQDN {decoded_name!r}"
         )
+
+
+def _rfc4702_response_payloads():
+    responses = context_storage.get('rfc4702_responses', [])
+    assert len(responses) == 2, "Missing RFC 4702 OFFER/ACK responses"
+    payloads = []
+    for label, packet in zip(('DHCPOFFER', 'DHCPACK'), responses):
+        fragments = _support_get_raw_fragments(packet, 81)
+        if not fragments and label == 'DHCPOFFER':
+            continue
+        assert len(fragments) == 1, (
+            f"{label} must contain one Client FQDN option, got {fragments!r}"
+        )
+        payload = fragments[0][1]
+        assert len(payload) >= 3, f"{label} Client FQDN option is truncated"
+        payloads.append((label, payload))
+    return payloads
+
+
+@then('every returned Client FQDN option sets RCODE1 and RCODE2 to 255')
+def step_then_rfc4702_response_rcodes_are_deprecated(context):
+    for label, payload in _rfc4702_response_payloads():
+        assert payload[1:3] == b'\xff\xff', (
+            f"{label} Client FQDN RCODEs must be 255/255, got "
+            f"{payload[1]}/{payload[2]}"
+        )
+
+
+@when('a client completes DORA with a partial DNS Client FQDN')
+def step_when_dora_with_partial_fqdn(context):
+    fqdn_option = _rfc4702_dns_option(_RFC4702_PARTIAL_LABEL, terminated=False)
+    _rfc4702_exchange(fqdn_option)
+    context_storage['rfc4702_expected_name'] = (
+        f'{_RFC4702_PARTIAL_LABEL}.{_RFC4702_SUFFIX}'
+    )
+
+
+@then('the DHCPACK Client FQDN contains the configured complete name')
+def step_then_rfc4702_responses_complete_name(context):
+    expected = context_storage['rfc4702_expected_name'].lower()
+    payload = dict(_rfc4702_response_payloads())['DHCPACK']
+    assert payload[0] & 0x04, "DHCPACK cleared DNS encoding for a partial name"
+    actual = _decode_rfc4702_name(payload, True).lower()
+    assert actual == expected, (
+        f"DHCPACK returned Client FQDN {actual!r}; expected {expected!r}"
+    )
+
+
+@when('a client completes DORA with conflicting Client FQDN and Host Name options')
+def step_when_dora_with_conflicting_names(context):
+    _rfc4702_exchange(
+        _rfc4702_dns_option(_RFC4702_OPTION81_NAME),
+        host_name=_RFC4702_CONFLICTING_HOST_NAME,
+    )
+    context_storage['rfc4702_expected_name'] = _RFC4702_OPTION81_NAME
+
+
+@then('the DHCPACK Client FQDN uses the Option 81 name')
+def step_then_rfc4702_option81_wins(context):
+    expected = context_storage['rfc4702_expected_name'].lower()
+    conflicting = _RFC4702_CONFLICTING_HOST_NAME.decode('ascii').lower()
+    payload = dict(_rfc4702_response_payloads())['DHCPACK']
+    actual = _decode_rfc4702_name(payload, bool(payload[0] & 0x04)).lower()
+    assert actual == expected, (
+        f"DHCPACK used {actual!r}; expected Client FQDN {expected!r}"
+    )
+    assert conflicting not in actual, (
+        f"DHCPACK used the conflicting Host Name option {conflicting!r}"
+    )

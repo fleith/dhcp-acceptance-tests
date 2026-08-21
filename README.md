@@ -103,11 +103,10 @@ compatibility reproducible:
 - `kea-lts`: the official ISC Kea 3.0.3 LTS images.
 - `kea-stable`: the official ISC Kea 3.2.0 current stable images.
 
-The Kea 3.x IPv4 profiles currently expose an RFC 8925 behavior change: option
-108 requests receive an addressless OFFER instead of completing the suite's
-deliberate IPv4 fallback flow. This remains visible in the informational matrix
-as an expected compatibility warning. Any unrelated failure in the same job is
-still treated as a regression.
+The RFC 8925 scenarios accept both standards-compliant server strategies: Kea
+3.x's preferred addressless OFFER and the addressful fallback used by ISC DHCP
+and Kea 2.2. An addressful response is followed through REQUEST/ACK; an
+addressless response is not incorrectly requested by the test client.
 
 The Kea 3.0.3 and 3.2.0 DHCPv6 profiles also abort on a malformed RELAY-FORWARD
 that omits the mandatory Relay Message option. CI runs that robustness probe in
@@ -141,6 +140,8 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_SUBNET` | detected from interface | Expected DHCPv4 lease subnet |
 | `TEST_SUBNET_V6` | detected from interface | Expected DHCPv6 lease subnet |
 | `TEST_SUBNET_SELECTION_SUBNET` | `172.29.1.0/24` | Alternate DHCPv4 subnet used by RFC 3011 selection tests |
+| `TEST_DHCPV4_RELAY_SUBNET` | `172.29.2.0/24` | Independently selected relay subnet used for real `giaddr` scope tests |
+| `DHCPV4_FQDN_SUFFIX` | `dhcp-acceptance.test` | Qualifying suffix used to complete partial RFC 4702 Client FQDN names |
 | `TEST_LEASE_TIME` | `120` | Lease duration in seconds |
 | `TEST_CLIENT_MAC` | `02:00:00:00:00:01` | Fallback DHCPv4 client MAC |
 | `TEST_RESULTS_DIR` | `/app/test-results/default` | JUnit report directory inside the test runner |
@@ -203,10 +204,10 @@ RFC 4361, RFC 4704, and RFC 8925.
 - **RFC 3396**: semantic request-fragment reassembly through class policy plus exact reconstruction of a 320-octet response option split into sequential fragments. Kea 2.2's request-policy divergence is explicitly documented.
 - **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, suppression of requested legacy Router and Static Route options, unusual parameter request lists, and exact RFC 3396 reconstruction of an oversized option 121. Kea 2.2 still returns legacy Router option 3, while Kea 3.0.3 and 3.2.0 reject the oversized option instead of splitting it; both behaviors are recorded explicitly.
 - **RFC 4361**: node-specific DHCPv4 client identifiers, stable identity across hardware changes, IAID/DUID isolation, and malformed identifier recovery.
-- **RFC 4702**: Client FQDN option negotiation with raw DNS/ASCII encoding and E-flag preservation, plus capability-gated proof that DNS publication waits for lease commitment.
+- **RFC 4702**: Client FQDN option negotiation with raw DNS/ASCII encoding and E-flag preservation, exact partial-name completion, conflicting Host Name precedence, and response RCODE validation. Kea 2.2's OFFER RCODE divergence is recorded explicitly; DNS publication timing remains capability-gated.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation. Kea runs the positive negotiation scenarios; ISC runs only the universal omission checks in this fixture. A tagged, default-excluded known divergence documents that Kea 2.2 returns FQDN without an ORO request.
 - **RFC 6842**: client-identifier based lease stability across hardware-address changes, byte-for-byte response echo when supplied, and response omission when absent. ISC DHCP 4.4.1's legacy reply omission is recorded as a backend-specific divergence.
-- **RFC 8925**: requested IPv6-Only Preferred option delivery, configured and zero-default timer encoding, deliberate IPv4 fallback processing, request-list stability, and subnet/client omission behavior.
+- **RFC 8925**: requested per-pool IPv6-Only Preferred option delivery, configured and zero-default timer encoding, addressless and addressful server strategies, addressful fallback completion, request-list stability, and omission on an independently selected non-IPv6-mostly relay pool.
 - **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. Authenticated server-initiated Reconfigure remains outside the fixture's claims. IA_PD and these lifecycle paths deepen existing RFC coverage rather than adding another RFC to the count.
 
 Additional coverage is intentionally excluded from the 12-RFC server count:
@@ -344,8 +345,7 @@ GitHub Actions runs the supported matrix:
 
 These four baseline jobs are required. A separate compatibility matrix covers
 ISC DHCP 4.4.3-P1, Kea 3.0.3 LTS, Kea 3.2.0 stable, and explicitly tagged known
-divergences. The documented Kea 3.x RFC 8925 difference is reported as a
-warning. The Kea 3.x malformed DHCPv6 relay crash is isolated in dedicated
+divergences. The Kea 3.x malformed DHCPv6 relay crash is isolated in dedicated
 robustness rows so it cannot truncate the full IPv6 runs. Unclassified
 compatibility failures still fail their job.
 

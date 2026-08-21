@@ -61,6 +61,8 @@ def before_scenario(context, scenario):
         'kea_rfc3396_request_reassembly_divergence': {'kea'},
         'reference_offer_hold_divergence': {'isc', 'isc-dhcpd', 'kea'},
         'kea_rfc3442_legacy_route_divergence': {'kea'},
+        'isc_rfc3011_selection_divergence': {'isc', 'isc-dhcpd'},
+        'kea_rfc4702_rcode_divergence': {'kea'},
     }
     for tag, implementations in reference_divergences.items():
         if tag in scenario.tags and server_impl in implementations:

@@ -15,6 +15,7 @@ PREFIX="${IP_PREFIX##*/}"
 ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
 ALT_SERVER_IP="${RFC3011_ALT_SERVER_IP:-}"
 RFC8925_WAIT="${RFC8925_WAIT:-1800}"
+DHCPV4_FQDN_SUFFIX="${DHCPV4_FQDN_SUFFIX:-dhcp-acceptance.test}"
 RFC3442_EXTRA_ROUTE_COUNT="${RFC3442_EXTRA_ROUTE_COUNT:-30}"
 DHCPV4_RFC3396_POLICY_DOMAIN="${DHCPV4_RFC3396_POLICY_DOMAIN:-rfc3396-reassembled.test}"
 DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
@@ -178,12 +179,12 @@ host acceptance-reserved {
 }
 
 # RFC 4702: enable DDNS so dhcpd negotiates the Client FQDN option (81) and
-# echoes it back in the OFFER/ACK.  The .test TLD (RFC 6761) keeps any actual
+# returns it in DHCPACK.  The .test TLD (RFC 6761) keeps any actual
 # DNS update attempt local and fast-failing; the acceptance test only exercises
-# the option echo, not the DNS update itself.
+# the negotiated option in DHCPACK, not the DNS update itself.
 ddns-update-style interim;
 ddns-updates on;
-ddns-domainname "dhcp-acceptance.test";
+ddns-domainname "$DHCPV4_FQDN_SUFFIX";
 ddns-rev-domainname "in-addr.arpa";
 
 shared-network dhcp-test-shared {
@@ -191,12 +192,14 @@ subnet $NET netmask $NETMASK {
     # Always send broadcast responses so the test-runner's sniffer captures
     # unicast-destined replies even when the client IP is not configured locally.
     always-broadcast on;
-    range ${NET3}.${DHCPV4_POOL_START_OFFSET} ${NET3}.${DHCPV4_POOL_END_OFFSET};
+    pool {
+        range ${NET3}.${DHCPV4_POOL_START_OFFSET} ${NET3}.${DHCPV4_POOL_END_OFFSET};
+        option v6-only-preferred $RFC8925_WAIT;
+    }
     option routers ${NET3}.1;
     option subnet-mask $NETMASK;
     option domain-name-servers 8.8.8.8, 1.1.1.1;
     option classless-static-routes $RFC3442_ROUTE_BYTES;
-    option v6-only-preferred $RFC8925_WAIT;
 }
 subnet $ALT_NET netmask $NETMASK {
     always-broadcast on;
