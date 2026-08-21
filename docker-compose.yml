@@ -12,6 +12,8 @@ services:
       DHCPV4_RELAY_SUBNET: 172.29.2.0/24
       RFC8925_WAIT: ${RFC8925_WAIT:-1800}
       DHCPV4_FQDN_SUFFIX: ${DHCPV4_FQDN_SUFFIX:-dhcp-acceptance.test}
+      DHCPV4_DDNS_SERVER_IP: ${DHCPV4_DDNS_SERVER_IP:-}
+      DHCPV4_SERVER_LOG_FILE: ${DHCPV4_SERVER_LOG_FILE:-}
       RFC3442_EXTRA_ROUTE_COUNT: ${RFC3442_EXTRA_ROUTE_COUNT:-30}
       DHCPV4_RFC3396_POLICY_DOMAIN: ${DHCPV4_RFC3396_POLICY_DOMAIN:-rfc3396-reassembled.test}
       DHCPV4_POOL_START_OFFSET: ${DHCPV4_POOL_START_OFFSET:-100}
@@ -33,6 +35,9 @@ services:
     cap_add:
       - NET_ADMIN
     privileged: true
+    volumes:
+      - ./test-state:/test-state
+      - ./test-state:/var/log/kea
     networks:
       dhcp-test-net:
         ipv4_address: 172.29.0.2
@@ -68,6 +73,8 @@ services:
       TEST_RFC3396_POLICY_DOMAIN: ${DHCPV4_RFC3396_POLICY_DOMAIN:-rfc3396-reassembled.test}
       TEST_RFC8925_WAIT: ${RFC8925_WAIT:-1800}
       TEST_RFC4702_SUFFIX: ${DHCPV4_FQDN_SUFFIX:-dhcp-acceptance.test}
+      TEST_DHCPV4_SERVER_LOG_FILE: ${TEST_DHCPV4_SERVER_LOG_FILE:-/app/test-state/dhcpv4-server.log}
+      TEST_DHCPV4_DECLINE_LOG_PATTERN: ${TEST_DHCPV4_DECLINE_LOG_PATTERN:-}
       DHCPV4_POOL_START_OFFSET: ${DHCPV4_POOL_START_OFFSET:-100}
       DHCPV4_POOL_END_OFFSET: ${DHCPV4_POOL_END_OFFSET:-200}
       DHCPV4_ALT_POOL_ENABLED: ${DHCPV4_ALT_POOL_ENABLED:-1}

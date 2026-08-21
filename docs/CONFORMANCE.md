@@ -23,6 +23,7 @@ needed before making a complete claim.
 | Scheduled DHCPv4 soak | `bash ./run_soak_tests.sh --server <server> --profile scheduled` | 2,880 acquire/release commits, released-address reuse, latency drift, post-soak availability, and container resource growth |
 | Pool exhaustion | Select `@pool_exhaustion` with a deliberately small pool | Exhaustion and recovery without making normal runs consume the entire pool |
 | Server ping check | `bash ./run_ping_check_tests.sh --server <server>` | RFC 2131 candidate-address ICMP probing with silent and responding peers |
+| IPv4 observability | `bash ./run_ipv4_observability_tests.sh --server <server>` | DECLINE administrative evidence plus Kea addressless allocation or ISC live DDNS behavior |
 | Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
 | Lifecycle | `bash ./run_lifecycle_tests.sh --server <server>` | Graceful restart, SIGKILL recovery, and persistent binding ownership |
 | Configuration safety | `bash ./run_config_safety_tests.sh --server <server> [--overlap-policy reject\|allow]` | Explicit overlap policy and unavailable lease-store rejection |
@@ -80,6 +81,15 @@ does not change the reference selection result. DHCPOFFER and DHCPACK must stay
 in that selected scope. The runner also supplies a requested-address hint from
 the losing scope and proves the hint cannot cross the selection boundary.
 
+The IPv4 observability runner supplies the integration points that cannot be
+proven from DHCP packets alone. Both reference families expose a server event
+log and must identify the exact DHCPDECLINE address. Kea 3.2 additionally runs
+an IPv6-mostly subnet with a bounded pool: the Option 108 response must offer
+0.0.0.0 without an ICMP probe, after which ordinary clients must commit the
+entire pool. ISC DHCP 4.4.3-P1 uses the bundled authoritative DNS observer to
+prove that RFC 4702 updates occur only after ACK and that Option 81 suppresses
+a conflicting Option 12 name.
+
 ## Capability adapters
 
 Capabilities are skipped unless their name is present in the comma-separated
@@ -90,7 +100,7 @@ reported as a pass.
 |---|---|
 | `reload` | `TEST_RELOAD_COMMAND`; optionally `TEST_RELOADED_CLASS_DOMAIN` |
 | `ha` | `TEST_HA_FAILOVER_COMMAND`; optionally `TEST_HA_RECOVER_COMMAND` |
-| `ddns` | `TEST_DNS_SERVER` and `TEST_DDNS_FQDN` |
+| `ddns` | `TEST_DNS_SERVER` and optionally `TEST_DDNS_FQDN`; the bundled ISC profile supplies the DNS observer and server configuration |
 | `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP` |
 | `authenticated_reconfigure` | `TEST_RECONFIGURE_TRIGGER_COMMAND` and `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` |
 | `storage_fault` | `TEST_STORAGE_FAIL_COMMAND` and `TEST_STORAGE_RECOVER_COMMAND` for an external target; the bundled reference fixtures use `run_storage_fault_tests.sh` |

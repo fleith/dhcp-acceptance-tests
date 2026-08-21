@@ -85,6 +85,10 @@ bash ./run_soak_tests.sh --server kea --server-version kea-stable --profile sche
 bash ./run_ping_check_tests.sh --server isc-dhcpd
 bash ./run_ping_check_tests.sh --server kea  # defaults to Kea 3.2
 
+# IPv4 administrative logs, RFC 8925 addressless allocation, and live DDNS
+bash ./run_ipv4_observability_tests.sh --server isc-dhcpd --server-version isc-final
+bash ./run_ipv4_observability_tests.sh --server kea --server-version kea-stable
+
 # Exhaust isolated lease storage, force-kill, and reconcile durable ACKs
 bash ./run_storage_fault_tests.sh --server isc-dhcpd
 bash ./run_storage_fault_tests.sh --server kea --server-version kea-stable
@@ -142,6 +146,10 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_SUBNET_SELECTION_SUBNET` | `172.29.1.0/24` | Alternate DHCPv4 subnet used by RFC 3011 selection tests |
 | `TEST_DHCPV4_RELAY_SUBNET` | `172.29.2.0/24` | Independently selected relay subnet used for real `giaddr` scope tests |
 | `DHCPV4_FQDN_SUFFIX` | `dhcp-acceptance.test` | Qualifying suffix used to complete partial RFC 4702 Client FQDN names |
+| `DHCPV4_DDNS_SERVER_IP` | empty | Authoritative DNS update target used by the isolated ISC DHCP DDNS profile |
+| `DHCPV4_SERVER_LOG_FILE` | empty | Server-side path for an observable DHCPv4 administrative event log |
+| `TEST_DHCPV4_SERVER_LOG_FILE` | `/app/test-state/dhcpv4-server.log` | Test-runner view of the administrative event log |
+| `TEST_DNS_SERVER` | empty | Authoritative DNS server queried by advertised DDNS capability scenarios |
 | `TEST_LEASE_TIME` | `120` | Lease duration in seconds |
 | `TEST_CLIENT_MAC` | `02:00:00:00:00:01` | Fallback DHCPv4 client MAC |
 | `TEST_RESULTS_DIR` | `/app/test-results/default` | JUnit report directory inside the test runner |
@@ -196,7 +204,7 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 Server-focused coverage spans 12 RFCs: the existing eight plus RFC 3442,
 RFC 4361, RFC 4704, and RFC 8925.
 
-- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling, direct offer-hold enforcement for target services, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate. ISC DHCP 4.4.1 and Kea 2.2 reoffer an unselected address; that reference behavior is captured as a known divergence.
+- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling with exact administrative-log evidence, byte-identical initialization-parameter reuse after release, direct offer-hold enforcement for target services, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate. ISC DHCP 4.4.1 and Kea 2.2 reoffer an unselected address; that reference behavior is captured as a known divergence.
 - **RFC 2131 pool capacity**: a dedicated bounded run exhausts the DHCPv4 pool, verifies that an additional client receives no offer, releases one lease, and proves the waiting client can acquire that address.
 - **RFC 2132**: required network options, raw Subnet Mask/Router ordering, multi-address DNS encoding, and exact lease-time option length alongside T1/T2 timer validation.
 - **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path with exact response echo on Kea in the multi-subnet Docker topology.
@@ -204,10 +212,10 @@ RFC 4361, RFC 4704, and RFC 8925.
 - **RFC 3396**: semantic request-fragment reassembly through class policy plus exact reconstruction of a 320-octet response option split into sequential fragments. Kea 2.2's request-policy divergence is explicitly documented.
 - **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, suppression of requested legacy Router and Static Route options, unusual parameter request lists, and exact RFC 3396 reconstruction of an oversized option 121. Kea 2.2 still returns legacy Router option 3, while Kea 3.0.3 and 3.2.0 reject the oversized option instead of splitting it; both behaviors are recorded explicitly.
 - **RFC 4361**: node-specific DHCPv4 client identifiers, stable identity across hardware changes, IAID/DUID isolation, and malformed identifier recovery.
-- **RFC 4702**: Client FQDN option negotiation with raw DNS/ASCII encoding and E-flag preservation, exact partial-name completion, conflicting Host Name precedence, and response RCODE validation. Kea 2.2's OFFER RCODE divergence is recorded explicitly; DNS publication timing remains capability-gated.
+- **RFC 4702**: Client FQDN option negotiation with raw DNS/ASCII encoding and E-flag preservation, exact partial-name completion, conflicting Host Name precedence, and response RCODE validation. The required ISC DHCP observability profile uses a live authoritative DNS observer to prove that updates wait for lease commitment, Option 81 is published, and the conflicting Option 12 name is ignored. Kea 2.2's OFFER RCODE divergence is recorded explicitly.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation. Kea runs the positive negotiation scenarios; ISC runs only the universal omission checks in this fixture. A tagged, default-excluded known divergence documents that Kea 2.2 returns FQDN without an ORO request.
 - **RFC 6842**: client-identifier based lease stability across hardware-address changes, byte-for-byte response echo when supplied, and response omission when absent. ISC DHCP 4.4.1's legacy reply omission is recorded as a backend-specific divergence.
-- **RFC 8925**: requested per-pool IPv6-Only Preferred option delivery, configured and zero-default timer encoding, addressless and addressful server strategies, addressful fallback completion, request-list stability, and omission on an independently selected non-IPv6-mostly relay pool.
+- **RFC 8925**: requested IPv6-mostly scope delivery, configured and zero-default timer encoding, addressless and addressful server strategies, addressful fallback completion, request-list stability, omission on an independently selected non-IPv6-mostly relay pool, Rapid Commit suppression, and an isolated Kea 3.2 proof that an addressless response neither probes nor consumes any bounded-pool candidate.
 - **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. Authenticated server-initiated Reconfigure remains outside the fixture's claims. IA_PD and these lifecycle paths deepen existing RFC coverage rather than adding another RFC to the count.
 
 Additional coverage is intentionally excluded from the 12-RFC server count:
@@ -240,11 +248,12 @@ For backends that accept overlapping subnets, the isolated Kea profile also
 checks that both declaration orders retain the reference selection result,
 OFFER-to-ACK scope consistency, scope-specific options, and rejection of
 requested-address hints from the non-selected pool.
-Reload, HA, DDNS, a second direct interface, and authenticated DHCPv6
-Reconfigure have executable capability-gated scenarios because they require a
-product-specific topology or control-plane adapter. External services may also
-use the storage-fault capability adapter, while ISC DHCP and Kea run the
-bundled isolated storage profile in CI. The machine-readable index is
+Reload, HA, a second direct interface, and authenticated DHCPv6 Reconfigure
+have executable capability-gated scenarios because they require a
+product-specific topology or control-plane adapter. External services may use
+the DDNS and storage-fault capability adapters, while ISC DHCP runs the bundled
+authoritative DNS profile and both reference families run the bundled isolated
+storage profile in CI. The machine-readable index is
 [`docs/conformance-profile.json`](docs/conformance-profile.json).
 The statement-level [RFC MUST/SHOULD traceability matrix](docs/RFC_REQUIREMENTS.md)
 maps each inventoried requirement to an exact scenario or explicit gap; its
@@ -324,11 +333,13 @@ dhcp-acceptance-tests/
 |-- docker-compose.yml
 |-- docker-compose.kea.yml
 |-- docker-compose.ipv6.yml
+|-- docker-compose.ddns.yml
 |-- RFC_EXPANSION_PLAN.md
 |-- run_dhcp_tests.sh
 |-- run_lifecycle_tests.sh
 |-- run_config_safety_tests.sh
 |-- run_ping_check_tests.sh
+|-- run_ipv4_observability_tests.sh
 |-- run_tests.py
 |-- summarize_junit.py
 |-- tests/test_summarize_junit.py
@@ -350,10 +361,10 @@ robustness rows so it cannot truncate the full IPv6 runs. Unclassified
 compatibility failures still fail their job.
 
 CI also runs bounded focused robustness, lifecycle/crash recovery,
-configuration-safety policy, pool exhaustion, RFC 2131 server ping-check on
-ISC DHCP and Kea 3.2, and validation of the coverage profile. Other
-capability-gated scenarios remain deployment jobs: a target service must
-supply the advertised capability and its adapter configuration.
+configuration-safety policy, pool exhaustion, RFC 2131 server ping-check,
+IPv4 administrative/addressless/DDNS observability, and validation of the
+coverage profile. Other capability-gated scenarios remain deployment jobs: a
+target service must supply the advertised capability and its adapter configuration.
 
 Every matrix row writes a Markdown summary and uploads its JUnit reports for 14
 days, including failed runs. The full workflow also runs every Monday and can

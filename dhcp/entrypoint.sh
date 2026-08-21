@@ -16,6 +16,8 @@ ALT_SUBNET_CIDR="${RFC3011_ALT_SUBNET:-}"
 ALT_SERVER_IP="${RFC3011_ALT_SERVER_IP:-}"
 RFC8925_WAIT="${RFC8925_WAIT:-1800}"
 DHCPV4_FQDN_SUFFIX="${DHCPV4_FQDN_SUFFIX:-dhcp-acceptance.test}"
+DHCPV4_DDNS_SERVER_IP="${DHCPV4_DDNS_SERVER_IP:-}"
+DHCPV4_SERVER_LOG_FILE="${DHCPV4_SERVER_LOG_FILE:-}"
 RFC3442_EXTRA_ROUTE_COUNT="${RFC3442_EXTRA_ROUTE_COUNT:-30}"
 DHCPV4_RFC3396_POLICY_DOMAIN="${DHCPV4_RFC3396_POLICY_DOMAIN:-rfc3396-reassembled.test}"
 DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
@@ -117,6 +119,16 @@ if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ]; then
 ping-timeout $DHCPV4_PING_TIMEOUT;"
 fi
 
+DDNS_ZONE_CONFIG=""
+if [ -n "$DHCPV4_DDNS_SERVER_IP" ]; then
+    DDNS_ZONE_CONFIG="zone ${DHCPV4_FQDN_SUFFIX}. {
+    primary $DHCPV4_DDNS_SERVER_IP;
+}
+zone ${n3}.${n2}.${n1}.in-addr.arpa. {
+    primary $DHCPV4_DDNS_SERVER_IP;
+}"
+fi
+
 RFC3396_LONG_OPTION=""
 _rfc3396_count=0
 while [ "$_rfc3396_count" -lt 20 ]; do
@@ -179,13 +191,14 @@ host acceptance-reserved {
 }
 
 # RFC 4702: enable DDNS so dhcpd negotiates the Client FQDN option (81) and
-# returns it in DHCPACK.  The .test TLD (RFC 6761) keeps any actual
-# DNS update attempt local and fast-failing; the acceptance test only exercises
-# the negotiated option in DHCPACK, not the DNS update itself.
+# returns it in DHCPACK. The ordinary fixture keeps .test updates local and
+# fast-failing; the observability overlay supplies an authoritative target and
+# validates the resulting update timing and name selection.
 ddns-update-style interim;
 ddns-updates on;
 ddns-domainname "$DHCPV4_FQDN_SUFFIX";
 ddns-rev-domainname "in-addr.arpa";
+$DDNS_ZONE_CONFIG
 
 shared-network dhcp-test-shared {
 subnet $NET netmask $NETMASK {
@@ -224,5 +237,12 @@ touch "$LEASE_FILE"
 echo "[dhcpd] interface=$IFACE ip=$IP netmask=$NETMASK network=$NET pool=${NET3}.${DHCPV4_POOL_START_OFFSET}-${NET3}.${DHCPV4_POOL_END_OFFSET} alt_subnet=$ALT_SUBNET_CIDR alt_server_ip=$ALT_SERVER_IP"
 echo "[dhcpd] Generated /data/dhcpd.conf:"
 cat /data/dhcpd.conf
+
+if [ -n "$DHCPV4_SERVER_LOG_FILE" ]; then
+    mkdir -p "$(dirname "$DHCPV4_SERVER_LOG_FILE")"
+    : > "$DHCPV4_SERVER_LOG_FILE"
+    exec dhcpd -d -f -cf /data/dhcpd.conf -lf "$LEASE_FILE" "$IFACE" \
+        > "$DHCPV4_SERVER_LOG_FILE" 2>&1
+fi
 
 exec dhcpd -f -cf /data/dhcpd.conf -lf "$LEASE_FILE" "$IFACE"

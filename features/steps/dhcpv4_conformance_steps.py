@@ -74,6 +74,7 @@ RELOADED_CLASS_DOMAIN = os.getenv(
 DDNS_FQDN = os.getenv(
     "TEST_DDNS_FQDN", "acceptance-client.dhcp-acceptance.test."
 )
+INITIALIZATION_OPTION_CODES = (1, 3, 6, 15, 51, 58, 59)
 
 
 def _state(context):
@@ -256,6 +257,78 @@ def _ensure_cleanup(context):
     if not state.get("cleanup_registered"):
         context.add_cleanup(_cleanup, context)
         state["cleanup_registered"] = True
+
+
+def _initialization_parameters(packet):
+    return {
+        code: tuple(value for _, value in raw_dhcp_option_fragments(packet, code))
+        for code in INITIALIZATION_OPTION_CODES
+    }
+
+
+@given("a DHCPv4 client holds a classed lease with a stable client identifier")
+def step_classed_stable_client_lease(context):
+    _ensure_cleanup(context)
+    client_id = b"\xffinit-parameters-" + os.urandom(8)
+    lease = _dora(
+        context,
+        client_id=client_id,
+        extra=[("vendor_class_id", CLASS_NAME)],
+    )
+    parameters = _initialization_parameters(lease["acks"][0])
+    missing = [code for code in (1, 3, 6, 15, 51, 58, 59) if not parameters[code]]
+    assert not missing, (
+        f"Initial classed DHCPACK omitted requested initialization options {missing}"
+    )
+    _state(context)["released_initialization"] = {
+        "client_id": client_id,
+        "ip": lease["ip"],
+        "lease": lease,
+        "parameters": parameters,
+    }
+
+
+@when("that client releases its classed lease")
+def step_release_classed_stable_client(context):
+    state = _state(context)
+    recorded = state["released_initialization"]
+    _release(recorded["lease"])
+    state["active"].remove(recorded["lease"])
+    time.sleep(0.5)
+
+
+@when("the same client identifier reconnects from a different hardware address")
+def step_reconnect_stable_client_id(context):
+    state = _state(context)
+    recorded = state["released_initialization"]
+    new_mac = _new_mac()
+    assert new_mac != recorded["lease"]["mac"]
+    recorded["reconnected"] = _dora(
+        context,
+        mac=new_mac,
+        client_id=recorded["client_id"],
+        requested=recorded["ip"],
+        extra=[("vendor_class_id", CLASS_NAME)],
+    )
+
+
+@then("the released address is reused for the stable client identifier")
+def step_released_address_reused_for_stable_identity(context):
+    recorded = _state(context)["released_initialization"]
+    assert recorded["reconnected"]["ip"] == recorded["ip"], (
+        f"Stable client identifier was assigned {recorded['reconnected']['ip']} "
+        f"instead of released address {recorded['ip']}"
+    )
+
+
+@then("the acknowledged initialization parameters match the released lease")
+def step_initialization_parameters_match(context):
+    recorded = _state(context)["released_initialization"]
+    actual = _initialization_parameters(recorded["reconnected"]["acks"][0])
+    assert actual == recorded["parameters"], (
+        "Reconnected client received different initialization parameters: "
+        f"before={recorded['parameters']!r}, after={actual!r}"
+    )
 
 
 def _run_adapter(variable):
@@ -1175,10 +1248,10 @@ def _ddns_option(name):
     return b"\x05\x00\x00" + _fqdn_wire(name)
 
 
-def _unique_ddns_fqdn():
+def _unique_ddns_fqdn(prefix="timing"):
     labels = DDNS_FQDN.rstrip(".").split(".")
     suffix = ".".join(labels[1:]) if len(labels) > 1 else labels[0]
-    return f"timing-{os.urandom(4).hex()}.{suffix}."
+    return f"{prefix}-{os.urandom(4).hex()}.{suffix}."
 
 
 def _dns_addresses(context, fqdn):
@@ -1250,6 +1323,44 @@ def step_ddns_resolves(context):
     raise AssertionError(
         f"DDNS name {fqdn} did not resolve to {expected}: {last_error}"
     )
+
+
+@when("a DHCPv4 client commits conflicting Client FQDN and Host Name values")
+def step_ddns_conflicting_names(context):
+    _ensure_cleanup(context)
+    fqdn = _unique_ddns_fqdn("fqdn-wins")
+    host_fqdn = _unique_ddns_fqdn("host-loses")
+    host_label = host_fqdn.rstrip(".").split(".", 1)[0]
+    lease = _dora(
+        context,
+        extra=[
+            (81, _ddns_option(fqdn)),
+            (12, host_label.encode("ascii")),
+        ],
+    )
+    state = _state(context)
+    state["ddns_fqdn"] = fqdn
+    state["ddns_conflicting_host_fqdn"] = host_fqdn
+    state["ddns_lease"] = lease
+
+
+@then(
+    "the authoritative DNS service resolves the Client FQDN to the committed address"
+)
+def step_ddns_client_fqdn_resolves(context):
+    step_ddns_resolves(context)
+
+
+@then("the authoritative DNS service has no record for the conflicting Host Name")
+def step_ddns_conflicting_host_absent(context):
+    fqdn = _state(context)["ddns_conflicting_host_fqdn"]
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        addresses = _dns_addresses(context, fqdn)
+        assert not addresses, (
+            f"Server published conflicting Host Name {fqdn}: {sorted(addresses)}"
+        )
+        time.sleep(0.5)
 
 
 @given("the test client has a configured second DHCPv4 interface")
