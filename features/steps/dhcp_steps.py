@@ -955,34 +955,48 @@ def step_when_discover_with_subnet_selection(context):
     context_storage['discover_sniffer'] = sniffer
 
 
-@when('a client sends a DHCPDISCOVER selecting the alternate subnet with a conflicting address hint')
-def step_when_discover_with_alt_subnet_selection(context):
+def _send_discover_with_alt_subnet_selection(conflicting_hint=None):
     if Ether is None:
         raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
     selected_subnet = _subnet_selection_subnet()
-    primary_subnet = ipaddress.ip_network(SUBNET, strict=False)
-    pool_start_offset = int(os.getenv("DHCPV4_POOL_START_OFFSET", "100"))
-    conflicting_hint = str(primary_subnet.network_address + pool_start_offset)
     xid = int.from_bytes(os.urandom(4), 'big')
+    options = [
+        ('message-type', 'discover'),
+        (118, _subnet_network_bytes(selected_subnet)),
+        ('param_req_list', [1, 3, 6, 51, 58, 59]),
+        ('end'),
+    ]
+    if conflicting_hint is not None:
+        options.insert(1, ('requested_addr', conflicting_hint))
     discover = (
         Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
         IP(src="0.0.0.0", dst="255.255.255.255") /
         UDP(sport=68, dport=67) /
         BOOTP(chaddr=_mac_bytes(_client_mac()), flags=0x8000, xid=xid) /
-        DHCP(options=[
-            ('message-type', 'discover'),
-            ('requested_addr', conflicting_hint),
-            (118, _subnet_network_bytes(selected_subnet)),
-            ('param_req_list', [1, 3, 6, 51, 58, 59]),
-            ('end'),
-        ])
+        DHCP(options=options)
     )
     sniffer = _start_dhcp_sniffer()
     sendp(discover, iface=INTERFACE, verbose=False)
     context_storage['transaction_id'] = xid
     context_storage['discover_sniffer'] = sniffer
     context_storage['rfc3011_selected_subnet'] = selected_subnet
-    context_storage['rfc3011_conflicting_hint'] = conflicting_hint
+    if conflicting_hint is None:
+        context_storage.pop('rfc3011_conflicting_hint', None)
+    else:
+        context_storage['rfc3011_conflicting_hint'] = conflicting_hint
+
+
+@when('a client sends a DHCPDISCOVER with Subnet Selection option for the alternate served subnet')
+def step_when_discover_with_default_disabled_alt_subnet_selection(context):
+    _send_discover_with_alt_subnet_selection()
+
+
+@when('a client sends a DHCPDISCOVER selecting the alternate subnet with a conflicting address hint')
+def step_when_discover_with_alt_subnet_selection(context):
+    primary_subnet = ipaddress.ip_network(SUBNET, strict=False)
+    pool_start_offset = int(os.getenv("DHCPV4_POOL_START_OFFSET", "100"))
+    conflicting_hint = str(primary_subnet.network_address + pool_start_offset)
+    _send_discover_with_alt_subnet_selection(conflicting_hint)
 
 
 @then('the client receives a DHCPOFFER with an IP address in the selected subnet')
