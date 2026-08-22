@@ -633,16 +633,32 @@ def step_when_reboot_wrong_subnet(context):
     context_storage['nak_sniffer'] = sniffer
 
 
-@when('an unknown client sends INIT-REBOOT for an unused same-subnet pool address')
+@when('an unknown client retransmits INIT-REBOOT for an unbound same-subnet address')
 def step_when_unknown_init_reboot(context):
     if Ether is None:
         raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
     rb = os.urandom(3)
     unknown_mac = f"02:00:01:{rb[0]:02x}:{rb[1]:02x}:{rb[2]:02x}"
     xid = int.from_bytes(os.urandom(4), 'big')
-    subnet = ipaddress.ip_network(SUBNET)
+    subnet = ipaddress.ip_network(SUBNET, strict=False)
+    pool_start_offset = int(os.getenv("DHCPV4_POOL_START_OFFSET", "100"))
     pool_end_offset = int(os.getenv("DHCPV4_POOL_END_OFFSET", "200"))
-    requested = str(subnet.network_address + pool_end_offset)
+    reserved_offset = int(os.getenv("TEST_DHCPV4_RESERVED_OFFSET", "50"))
+    host_offsets = range(subnet.num_addresses - 2, 0, -1)
+    unbound_offset = next(
+        (
+            offset
+            for offset in host_offsets
+            if not pool_start_offset <= offset <= pool_end_offset
+            and offset != reserved_offset
+        ),
+        None,
+    )
+    assert unbound_offset is not None, (
+        f"Subnet {subnet} has no host address outside pool offsets "
+        f"{pool_start_offset}..{pool_end_offset}"
+    )
+    requested = str(subnet.network_address + unbound_offset)
     request = (
         Ether(src=unknown_mac, dst="ff:ff:ff:ff:ff:ff") /
         IP(src="0.0.0.0", dst="255.255.255.255") /
@@ -656,7 +672,10 @@ def step_when_unknown_init_reboot(context):
     )
     sniffer = _start_dhcp_sniffer(timeout=3)
     sendp(request, iface=INTERFACE, verbose=False)
+    time.sleep(0.15)
+    sendp(request, iface=INTERFACE, verbose=False)
     sniffer.join()
+    context_storage['unknown_init_reboot_address'] = requested
     context_storage['unknown_init_reboot_responses'] = [
         packet for packet in (sniffer.results or [])
         if packet.haslayer(BOOTP)
@@ -670,7 +689,9 @@ def step_when_unknown_init_reboot(context):
 def step_then_unknown_init_reboot_silent(context):
     responses = context_storage.get('unknown_init_reboot_responses', [])
     assert not responses, (
-        "Unknown same-subnet INIT-REBOOT received server decision(s): "
+        "Unknown same-subnet INIT-REBOOT for "
+        f"{context_storage.get('unknown_init_reboot_address')} received server "
+        "decision(s): "
         f"{[_get_dhcp_options_dict(packet).get('message-type') for packet in responses]}"
     )
 
@@ -934,11 +955,14 @@ def step_when_discover_with_subnet_selection(context):
     context_storage['discover_sniffer'] = sniffer
 
 
-@when('a client sends a DHCPDISCOVER with Subnet Selection option for the alternate served subnet')
+@when('a client sends a DHCPDISCOVER selecting the alternate subnet with a conflicting address hint')
 def step_when_discover_with_alt_subnet_selection(context):
     if Ether is None:
         raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
     selected_subnet = _subnet_selection_subnet()
+    primary_subnet = ipaddress.ip_network(SUBNET, strict=False)
+    pool_start_offset = int(os.getenv("DHCPV4_POOL_START_OFFSET", "100"))
+    conflicting_hint = str(primary_subnet.network_address + pool_start_offset)
     xid = int.from_bytes(os.urandom(4), 'big')
     discover = (
         Ether(src=_client_mac(), dst="ff:ff:ff:ff:ff:ff") /
@@ -947,6 +971,7 @@ def step_when_discover_with_alt_subnet_selection(context):
         BOOTP(chaddr=_mac_bytes(_client_mac()), flags=0x8000, xid=xid) /
         DHCP(options=[
             ('message-type', 'discover'),
+            ('requested_addr', conflicting_hint),
             (118, _subnet_network_bytes(selected_subnet)),
             ('param_req_list', [1, 3, 6, 51, 58, 59]),
             ('end'),
@@ -957,6 +982,7 @@ def step_when_discover_with_alt_subnet_selection(context):
     context_storage['transaction_id'] = xid
     context_storage['discover_sniffer'] = sniffer
     context_storage['rfc3011_selected_subnet'] = selected_subnet
+    context_storage['rfc3011_conflicting_hint'] = conflicting_hint
 
 
 @then('the client receives a DHCPOFFER with an IP address in the selected subnet')
@@ -1080,7 +1106,9 @@ def step_then_no_selected_subnet_response_escapes(context):
         assert packet is not None, f"Missing {label} for RFC 3011 scope check"
         address = ipaddress.ip_address(packet[BOOTP].yiaddr)
         assert address in selected, (
-            f"{label} returned {address} outside selected subnet {selected}"
+            f"{label} returned {address} outside selected subnet {selected}; "
+            f"conflicting primary-subnet hint was "
+            f"{context_storage.get('rfc3011_conflicting_hint')}"
         )
 
 
@@ -1484,6 +1512,23 @@ def step_when_dora_with_fqdn_encoding(context, encoding):
     fqdn_option = _rfc4702_client_option(encoding)
     _rfc4702_exchange(fqdn_option)
     context_storage['rfc4702_encoding'] = encoding.strip().lower()
+
+
+@when('a client completes DORA with an unsupported ASCII Client FQDN option')
+def step_when_dora_with_unsupported_ascii_fqdn(context):
+    _rfc4702_exchange(_rfc4702_client_option('ascii'))
+
+
+@then('neither response contains a Client FQDN option')
+def step_then_rfc4702_ascii_option_is_ignored(context):
+    responses = context_storage.get('rfc4702_responses', [])
+    assert len(responses) == 2, "Missing RFC 4702 OFFER/ACK responses"
+    for label, packet in zip(('DHCPOFFER', 'DHCPACK'), responses):
+        fragments = _support_get_raw_fragments(packet, 81)
+        assert not fragments, (
+            f"{label} returned Client FQDN option 81 even though legacy ASCII "
+            f"encoding is declared unsupported: {fragments!r}"
+        )
 
 
 @then('the DHCPACK preserves {encoding} Client FQDN encoding')

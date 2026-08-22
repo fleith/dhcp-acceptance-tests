@@ -49,6 +49,9 @@ CLASS_NAME = os.getenv("TEST_DHCPV4_CLASS_NAME", "acceptance-class")
 CLASS_DOMAIN = os.getenv("TEST_DHCPV4_CLASS_DOMAIN", "class.acceptance.test")
 CONCURRENT_CLIENTS = int(os.getenv("TEST_DHCPV4_CONCURRENT_CLIENTS", "8"))
 BATCH_DEADLINE = float(os.getenv("TEST_DHCPV4_BATCH_DEADLINE", "15"))
+OFFER_HOLD_SECONDS = float(
+    os.getenv("TEST_DHCPV4_OFFER_HOLD_SECONDS", "0.75")
+)
 CHURN_CYCLES = int(os.getenv("TEST_DHCPV4_CHURN_CYCLES", "12"))
 FUZZ_CASES = int(os.getenv("TEST_DHCPV4_FUZZ_CASES", "24"))
 STATE_DIR = Path(os.getenv("TEST_STATE_DIR", "/app/test-state"))
@@ -441,30 +444,44 @@ def step_leave_offer_unselected(context):
     state["held_ip"] = offered.pop()
 
 
-@when("another DHCPv4 client requests that held address")
-def step_request_held_offer(context):
-    state = _state(context)
-    contender = _discover(_new_mac(), requested=state["held_ip"])
-    assert contender["offers"], "Second client received no alternative DHCPOFFER"
-    state["contender_discovery"] = contender
-
-
-@then("the second client is offered a different address")
-def step_contender_gets_different_offer(context):
-    state = _state(context)
-    contender_addresses = {
-        packet[BOOTP].yiaddr for packet in state["contender_discovery"]["offers"]
-    }
-    assert state["held_ip"] not in contender_addresses, (
-        f"Server re-offered held address {state['held_ip']} to another client"
+@when("multiple DHCPv4 clients request that held address during the hold window")
+def step_request_held_offer_during_window(context):
+    assert 0.1 <= OFFER_HOLD_SECONDS <= 10, (
+        "TEST_DHCPV4_OFFER_HOLD_SECONDS must stay in the bounded range 0.1..10"
     )
+    state = _state(context)
+    contenders = []
+    for index in range(2):
+        contender = _discover(_new_mac(), requested=state["held_ip"])
+        assert contender["offers"], (
+            f"Competing client {index + 1} received no alternative DHCPOFFER"
+        )
+        contenders.append(contender)
+        if index == 0:
+            time.sleep(OFFER_HOLD_SECONDS)
+    state["contender_discoveries"] = contenders
+
+
+@then("every competing client is offered a different address")
+def step_contenders_get_different_offers(context):
+    state = _state(context)
+    for index, contender in enumerate(state["contender_discoveries"], start=1):
+        contender_addresses = {
+            packet[BOOTP].yiaddr for packet in contender["offers"]
+        }
+        assert state["held_ip"] not in contender_addresses, (
+            f"Server re-offered held address {state['held_ip']} to competing "
+            f"client {index} during the {OFFER_HOLD_SECONDS:.2f}s hold window"
+        )
 
 
 @then("the reference server reoffers the held address")
 def step_reference_reoffers_held_address(context):
     state = _state(context)
     contender_addresses = {
-        packet[BOOTP].yiaddr for packet in state["contender_discovery"]["offers"]
+        packet[BOOTP].yiaddr
+        for contender in state["contender_discoveries"]
+        for packet in contender["offers"]
     }
     assert state["held_ip"] in contender_addresses, (
         f"Reference server unexpectedly reserved offered address {state['held_ip']}"

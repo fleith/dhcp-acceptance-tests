@@ -101,6 +101,7 @@ reported as a pass.
 | `reload` | `TEST_RELOAD_COMMAND`; optionally `TEST_RELOADED_CLASS_DOMAIN` |
 | `ha` | `TEST_HA_FAILOVER_COMMAND`; optionally `TEST_HA_RECOVER_COMMAND` |
 | `ddns` | `TEST_DNS_SERVER` and optionally `TEST_DDNS_FQDN`; the bundled ISC profile supplies the DNS observer and server configuration |
+| `rfc4702_ascii_unsupported` | Target service configured without legacy ASCII Option 81 support; the scenario requires DORA to succeed while both responses ignore Client FQDN |
 | `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP` |
 | `authenticated_reconfigure` | `TEST_RECONFIGURE_TRIGGER_COMMAND` and `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` |
 | `storage_fault` | `TEST_STORAGE_FAIL_COMMAND` and `TEST_STORAGE_RECOVER_COMMAND` for an external target; the bundled reference fixtures use `run_storage_fault_tests.sh` |

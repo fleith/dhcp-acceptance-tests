@@ -117,9 +117,9 @@ that omits the mandatory Relay Message option. CI runs that robustness probe in
 dedicated expected-divergence rows and excludes it only from the corresponding
 full Kea 3.x IPv6 rows, allowing every other IPv6 scenario to finish.
 
-Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. It verifies both alternate-pool allocation and byte-for-byte Option 118 preservation in OFFER and ACK. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet. The default-disabled security test passes on ISC; Kea 2.2 instead honors Option 118 without an explicit enable switch and is recorded as a reference-backend divergence.
+Note: the deeper RFC 3011 alternate-subnet selection scenario currently runs on Kea only. It supplies a conflicting primary-pool Option 50 hint, verifies alternate-pool allocation, and requires byte-for-byte Option 118 preservation in OFFER and ACK. In this Docker topology, ISC DHCP accepts Option 118 but still allocates from the directly attached subnet rather than the selected alternate subnet. The default-disabled security test passes on ISC; Kea 2.2 instead honors Option 118 without an explicit enable switch and is recorded as a reference-backend divergence.
 
-The strict unknown-client INIT-REBOOT test remains enabled for external target services. ISC DHCP 4.4.1 ACKs the unused same-subnet address and Kea 2.2 NAKs it, rather than remaining silent as RFC 2131 requires, so only those named reference backends skip the assertion. ISC DHCP 4.4.1 similarly retains RFC 2131's historical omission of Client Identifier in replies; Kea and external targets run the RFC 6842 byte-for-byte echo assertion.
+The strict unknown-client INIT-REBOOT test retransmits for an unbound same-subnet host outside all pools and reservations, then proves a valid client still completes DORA. ISC DHCP 4.4.3-P1 remains silent and passes; ISC DHCP 4.4.1 ACKs while Kea 2.2 and 3.2.0 NAK instead, so those profiles retain explicit divergence gates. ISC DHCP 4.4.1 similarly retains RFC 2131's historical omission of Client Identifier in replies; Kea and external targets run the RFC 6842 byte-for-byte echo assertion.
 
 ### Direct Docker Compose runs (advanced)
 
@@ -140,6 +140,7 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_SERVER_IP` | `172.29.0.2` | DHCPv4 server IP |
 | `TEST_SERVER_IPV6` | `fd00:29::2` | DHCPv6 server IP |
 | `TEST_SERVER_IMPL` | `isc-dhcpd` | Backend selector for server-specific scenarios |
+| `TEST_SERVER_VERSION` | `baseline` | Backend release profile used to scope known divergences |
 | `TEST_INTERFACE` | `eth0` | Interface used for raw packets |
 | `TEST_SUBNET` | detected from interface | Expected DHCPv4 lease subnet |
 | `TEST_SUBNET_V6` | detected from interface | Expected DHCPv6 lease subnet |
@@ -163,6 +164,7 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_EXHAUSTION_LIMIT` | `16` | Safety limit for an explicitly selected pool-exhaustion run |
 | `TEST_DHCPV4_CONCURRENT_CLIENTS` | `8` | Bounded number of simultaneous DHCPv4 clients (2..32) |
 | `TEST_DHCPV4_BATCH_DEADLINE` | `15` | Maximum seconds for the bounded concurrent batch |
+| `TEST_DHCPV4_OFFER_HOLD_SECONDS` | `0.75` | Minimum observation window during which competing clients must not receive an unselected offer |
 | `TEST_DHCPV4_CHURN_CYCLES` | `12` | Bounded acquire/release churn cycles (2..64) |
 | `TEST_DHCPV4_FUZZ_CASES` | `24` | Deterministic malformed corpus size (5..128) |
 | `TEST_DHCPV4_PING_CHECK_ADDRESS` | empty | Candidate address used only by the isolated server ping-check runner |
@@ -204,15 +206,15 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 Server-focused coverage spans 12 RFCs: the existing eight plus RFC 3442,
 RFC 4361, RFC 4704, and RFC 8925.
 
-- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling with exact administrative-log evidence, byte-identical initialization-parameter reuse after release, direct offer-hold enforcement for target services, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate. ISC DHCP 4.4.1 and Kea 2.2 reoffer an unselected address; that reference behavior is captured as a known divergence.
+- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling with exact administrative-log evidence, byte-identical initialization-parameter reuse after release, timed multi-client offer-hold enforcement, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate. ISC DHCP 4.4.1, ISC DHCP 4.4.3-P1, and Kea references reoffer an unselected address; that behavior is captured as a known divergence while external targets run the strict check.
 - **RFC 2131 pool capacity**: a dedicated bounded run exhausts the DHCPv4 pool, verifies that an additional client receives no offer, releases one lease, and proves the waiting client can acquire that address.
 - **RFC 2132**: required network options, raw Subnet Mask/Router ordering, multi-address DNS encoding, and exact lease-time option length alongside T1/T2 timer validation.
-- **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path with exact response echo on Kea in the multi-subnet Docker topology.
+- **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path with a conflicting primary-pool address hint plus exact response echo on Kea in the multi-subnet Docker topology.
 - **RFC 3046**: Relay Agent Information (Option 82) echo, byte preservation, last-option ordering, omission for ordinary clients, direct unicast renewal handling, opaque Circuit-ID policy matching, and raw validation that relay metadata never moves into overloaded BOOTP fields.
 - **RFC 3396**: semantic request-fragment reassembly through class policy plus exact reconstruction of a 320-octet response option split into sequential fragments. Kea 2.2's request-policy divergence is explicitly documented.
 - **RFC 3442**: Classless Static Route Option delivery, route decoding, classless default-route encoding, suppression of requested legacy Router and Static Route options, unusual parameter request lists, and exact RFC 3396 reconstruction of an oversized option 121. Kea 2.2 still returns legacy Router option 3, while Kea 3.0.3 and 3.2.0 reject the oversized option instead of splitting it; both behaviors are recorded explicitly.
 - **RFC 4361**: node-specific DHCPv4 client identifiers, stable identity across hardware changes, IAID/DUID isolation, and malformed identifier recovery.
-- **RFC 4702**: Client FQDN option negotiation with raw DNS/ASCII encoding and E-flag preservation, exact partial-name completion, conflicting Host Name precedence, and response RCODE validation. The required ISC DHCP observability profile uses a live authoritative DNS observer to prove that updates wait for lease commitment, Option 81 is published, and the conflicting Option 12 name is ignored. Kea 2.2's OFFER RCODE divergence is recorded explicitly.
+- **RFC 4702**: Client FQDN option negotiation with raw DNS/ASCII encoding and E-flag preservation, a capability-gated unsupported-ASCII ignore path, exact partial-name completion, conflicting Host Name precedence, and DNS/ASCII response RCODE validation. The required ISC DHCP observability profile uses a live authoritative DNS observer to prove that updates wait for lease commitment, Option 81 is published, and the conflicting Option 12 name is ignored. Kea 2.2 and 3.2.0 return `0/0` rather than `255/255` in DHCPOFFER for both encodings; that divergence is recorded explicitly.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation. Kea runs the positive negotiation scenarios; ISC runs only the universal omission checks in this fixture. A tagged, default-excluded known divergence documents that Kea 2.2 returns FQDN without an ORO request.
 - **RFC 6842**: client-identifier based lease stability across hardware-address changes, byte-for-byte response echo when supplied, and response omission when absent. ISC DHCP 4.4.1's legacy reply omission is recorded as a backend-specific divergence.
 - **RFC 8925**: requested IPv6-mostly scope delivery, configured and zero-default timer encoding, addressless and addressful server strategies, addressful fallback completion, request-list stability, omission on an independently selected non-IPv6-mostly relay pool, Rapid Commit suppression, and an isolated Kea 3.2 proof that an addressless response neither probes nor consumes any bounded-pool candidate.

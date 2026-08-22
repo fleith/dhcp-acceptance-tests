@@ -32,6 +32,10 @@ def _server_impl():
     return os.getenv('TEST_SERVER_IMPL', 'isc-dhcpd').strip().lower()
 
 
+def _server_version():
+    return os.getenv('TEST_SERVER_VERSION', 'baseline').strip().lower()
+
+
 def _capabilities():
     return {
         value.strip().lower()
@@ -47,6 +51,7 @@ def before_scenario(context, scenario):
     affecting lease-time assertions.
     """
     server_impl = _server_impl()
+    server_version = _server_version()
     if 'kea' in scenario.tags and server_impl != 'kea':
         scenario.skip(f"Scenario requires Kea backend; current backend is {server_impl}.")
         return
@@ -55,19 +60,31 @@ def before_scenario(context, scenario):
         return
 
     reference_divergences = {
-        'reference_init_reboot_divergence': {'isc', 'isc-dhcpd', 'kea'},
-        'isc_rfc6842_divergence': {'isc', 'isc-dhcpd'},
-        'kea_rfc3011_default_divergence': {'kea'},
-        'kea_rfc3396_request_reassembly_divergence': {'kea'},
-        'reference_offer_hold_divergence': {'isc', 'isc-dhcpd', 'kea'},
-        'kea_rfc3442_legacy_route_divergence': {'kea'},
-        'isc_rfc3011_selection_divergence': {'isc', 'isc-dhcpd'},
-        'kea_rfc4702_rcode_divergence': {'kea'},
+        'reference_init_reboot_divergence': {
+            ('isc', 'baseline'), ('isc-dhcpd', 'baseline'), ('kea', '*')
+        },
+        'isc_rfc6842_divergence': {('isc', '*'), ('isc-dhcpd', '*')},
+        'kea_rfc3011_default_divergence': {('kea', '*')},
+        'kea_rfc3396_request_reassembly_divergence': {('kea', '*')},
+        'reference_offer_hold_divergence': {
+            ('isc', '*'), ('isc-dhcpd', '*'), ('kea', '*')
+        },
+        'kea_rfc3442_legacy_route_divergence': {('kea', '*')},
+        'isc_rfc3011_selection_divergence': {
+            ('isc', '*'), ('isc-dhcpd', '*')
+        },
+        'kea_rfc4702_rcode_divergence': {('kea', '*')},
     }
-    for tag, implementations in reference_divergences.items():
-        if tag in scenario.tags and server_impl in implementations:
+    server_profile = (server_impl, server_version)
+    wildcard_profile = (server_impl, '*')
+    for tag, profiles in reference_divergences.items():
+        if (
+            tag in scenario.tags
+            and (server_profile in profiles or wildcard_profile in profiles)
+        ):
             scenario.skip(
-                f"Known {server_impl} reference-backend divergence tracked by @{tag}."
+                f"Known {server_impl}/{server_version} reference-backend "
+                f"divergence tracked by @{tag}."
             )
             return
 

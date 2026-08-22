@@ -109,6 +109,7 @@ configure_version_profile() {
 
   unset ISC_DHCP_BASE_IMAGE KEA_BASE_IMAGE KEA_INSTALL_MODE TEST_BEHAVE_ARGS
   unset TEST_RESULTS_DIR
+  export TEST_SERVER_VERSION="$SERVER_VERSION"
 
   case "$SERVER_VERSION" in
     baseline)
