@@ -17,7 +17,7 @@ Feature: RFC 3011 Subnet Selection Option
   @ipv4_wire @ipv4_partial_next @isc_rfc3011_selection_divergence
   Scenario: Server selects the alternate served subnet requested by Subnet Selection option
     Given the DHCP server is running
-    When a client sends a DHCPDISCOVER with Subnet Selection option for the alternate served subnet
+    When a client sends a DHCPDISCOVER selecting the alternate subnet with a conflicting address hint
     Then the client receives a DHCPOFFER with an IP address in the selected subnet
     And a DHCPACK finalizes the lease for the selected subnet
     And no selected-subnet response contains an address outside that subnet

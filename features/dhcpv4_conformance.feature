@@ -17,15 +17,15 @@ Feature: DHCPv4 transaction safety and configuration behavior
   Scenario: An unselected offer remains reserved for the original client
     Given the DHCP server is running
     When one DHCPv4 client leaves an offered address unselected
-    And another DHCPv4 client requests that held address
-    Then the second client is offered a different address
+    And multiple DHCPv4 clients request that held address during the hold window
+    Then every competing client is offered a different address
     And the original client can still select the held address
 
   @ipv4 @negative @known_divergence @non_compliance @ipv4_should_next_divergence
   Scenario: Reference servers expose their unreserved offer behavior
     Given the DHCP server is running
     When one DHCPv4 client leaves an offered address unselected
-    And another DHCPv4 client requests that held address
+    And multiple DHCPv4 clients request that held address during the hold window
     Then the reference server reoffers the held address
 
   @concurrency

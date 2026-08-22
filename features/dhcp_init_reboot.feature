@@ -16,5 +16,6 @@ Feature: DHCP INIT-REBOOT state (RFC 2131 §3.2)
   @negative @must_gap @reference_init_reboot_divergence
   Scenario: Unknown client receives no answer for a same-subnet INIT-REBOOT address
     Given the DHCP server is running
-    When an unknown client sends INIT-REBOOT for an unused same-subnet pool address
+    When an unknown client retransmits INIT-REBOOT for an unbound same-subnet address
     Then the unknown INIT-REBOOT transaction receives no DHCPACK or DHCPNAK
+    And a valid DHCPv4 client still completes DORA

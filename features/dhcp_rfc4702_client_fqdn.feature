@@ -25,8 +25,19 @@ Feature: RFC 4702 Client FQDN Option (Option 81)
     When a client completes DORA with conflicting Client FQDN and Host Name options
     Then the DHCPACK Client FQDN uses the Option 81 name
 
-  @ipv4_partial_next @kea_rfc4702_rcode_divergence
-  Scenario: Server-sent Client FQDN options use the deprecated RCODE values
+  @negative @ipv4_should_next @requires_rfc4702_ascii_unsupported
+  Scenario: Unsupported ASCII Client FQDN encoding is ignored
     Given the DHCP server is running
-    When a client completes a DORA exchange using DNS Client FQDN encoding
+    When a client completes DORA with an unsupported ASCII Client FQDN option
+    Then neither response contains a Client FQDN option
+
+  @ipv4_partial_next @kea_rfc4702_rcode_divergence
+  Scenario Outline: Server-sent Client FQDN options use the deprecated RCODE values
+    Given the DHCP server is running
+    When a client completes a DORA exchange using <encoding> Client FQDN encoding
     Then every returned Client FQDN option sets RCODE1 and RCODE2 to 255
+
+    Examples:
+      | encoding |
+      | DNS      |
+      | ASCII    |
