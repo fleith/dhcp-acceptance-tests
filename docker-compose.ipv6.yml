@@ -39,6 +39,7 @@ services:
       TEST_DHCPV6_PD_PREFIX_LEN: 64
       TEST_DHCPV6_PD_HINT_PREFIX_LEN: 64
       TEST_DHCPV6_PD_POOL_CAPACITY: 16
+      TEST_CAPABILITIES: ${TEST_CAPABILITIES:-dhcpv6_rapid_commit}
 
 networks:
   dhcp-test-net:

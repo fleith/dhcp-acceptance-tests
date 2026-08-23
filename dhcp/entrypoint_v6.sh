@@ -22,6 +22,7 @@ default-lease-time 120;
 preferred-lifetime 120;
 option dhcp-renewal-time 60;
 option dhcp-rebinding-time 105;
+option dhcp6.rapid-commit;
 
 subnet6 $DHCPV6_SUBNET {
     range6 $DHCPV6_RANGE_START $DHCPV6_RANGE_END;

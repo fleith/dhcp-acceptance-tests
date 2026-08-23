@@ -73,6 +73,7 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
         "id": 1,
         "subnet": "$DHCPV6_SUBNET",
         "interface": "$IFACE",
+        "rapid-commit": true,
         "pools": [ { "pool": "$DHCPV6_POOL" } ],
         "pd-pools": [
           {
