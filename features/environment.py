@@ -74,6 +74,7 @@ def before_scenario(context, scenario):
             ('isc', '*'), ('isc-dhcpd', '*')
         },
         'kea_rfc4702_rcode_divergence': {('kea', '*')},
+        'reference_predictable_iid_divergence': {('kea', '*')},
     }
     server_profile = (server_impl, server_version)
     wildcard_profile = (server_impl, '*')

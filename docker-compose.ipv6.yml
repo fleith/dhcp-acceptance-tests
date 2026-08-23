@@ -14,6 +14,7 @@ services:
       DHCPV6_PD_RANGE_START: "fd00:30::"
       DHCPV6_PD_RANGE_END: "fd00:30:0:f::"
       DHCPV6_PD_DELEGATED_LEN: 64
+      DHCPV6_PREFERENCE: ${DHCPV6_PREFERENCE:-}
     networks:
       dhcp-test-net:
         ipv6_address: fd00:29::2
@@ -40,6 +41,7 @@ services:
       TEST_DHCPV6_PD_HINT_PREFIX_LEN: 64
       TEST_DHCPV6_PD_POOL_CAPACITY: 16
       TEST_CAPABILITIES: ${TEST_CAPABILITIES:-dhcpv6_rapid_commit}
+      TEST_DHCPV6_EXPECTED_PREFERENCE: ${TEST_DHCPV6_EXPECTED_PREFERENCE:-0}
 
 networks:
   dhcp-test-net:

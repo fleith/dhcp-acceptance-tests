@@ -68,6 +68,8 @@ def step_when_send_solicit(context):
     )
     if context_storage_v6.pop("include_reconfigure_accept", False):
         solicit /= _cls("DHCP6OptReconfAccept")()
+    if context_storage_v6.pop("request_preference", False):
+        solicit /= _cls("DHCP6OptOptReq")(reqopts=[7])
 
     sniffer = _start_v6_sniffer(timeout=12)
     sendp(solicit, iface=INTERFACE, verbose=False)
@@ -92,6 +94,7 @@ def step_then_receive_advertise(context):
     assert advertise_pkts, "No DHCPv6 ADVERTISE received"
 
     adv = advertise_pkts[0]
+    context_storage_v6["advertise_packet"] = adv
     server_duid = _get_server_duid(adv)
     assert server_duid, "DHCPv6 ADVERTISE missing Server Identifier"
 

@@ -109,6 +109,11 @@ def step_when_confirm_with_server_id(context):
     )
 
 
+@when("the client sends a DHCPv6 CONFIRM with an empty IA_NA")
+def step_when_confirm_with_empty_ia_na(context):
+    _send_confirm(None, timeout=2)
+
+
 @then("the matching DHCPv6 CONFIRM reply reports Success")
 def step_then_confirm_success(context):
     replies = _confirm_replies()
