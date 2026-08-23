@@ -9,6 +9,13 @@ DHCPV6_DOMAIN_SEARCH="${DHCPV6_DOMAIN_SEARCH:-example.test}"
 DHCPV6_PD_PREFIX="${DHCPV6_PD_PREFIX:-fd00:30::}"
 DHCPV6_PD_PREFIX_LEN="${DHCPV6_PD_PREFIX_LEN:-60}"
 DHCPV6_PD_DELEGATED_LEN="${DHCPV6_PD_DELEGATED_LEN:-64}"
+DHCPV6_PREFERENCE="${DHCPV6_PREFERENCE:-}"
+
+PREFERENCE_OPTION=""
+if [ -n "$DHCPV6_PREFERENCE" ]; then
+    PREFERENCE_OPTION=',
+          { "name": "preference", "data": "'"$DHCPV6_PREFERENCE"'" }'
+fi
 
 if ! ip -6 addr show "$IFACE" | grep -q "scope global"; then
     echo "[kea6] ERROR: No global IPv6 address on $IFACE" >&2
@@ -84,7 +91,7 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
         ],
         "option-data": [
           { "name": "dns-servers", "data": "$DHCPV6_DNS" },
-          { "name": "domain-search", "data": "$DHCPV6_DOMAIN_SEARCH" }
+          { "name": "domain-search", "data": "$DHCPV6_DOMAIN_SEARCH" }$PREFERENCE_OPTION
         ]
       }
     ],

@@ -10,6 +10,12 @@ DHCPV6_DOMAIN_SEARCH="${DHCPV6_DOMAIN_SEARCH:-example.test}"
 DHCPV6_PD_RANGE_START="${DHCPV6_PD_RANGE_START:-fd00:30::}"
 DHCPV6_PD_RANGE_END="${DHCPV6_PD_RANGE_END:-fd00:30:0:f::}"
 DHCPV6_PD_DELEGATED_LEN="${DHCPV6_PD_DELEGATED_LEN:-64}"
+DHCPV6_PREFERENCE="${DHCPV6_PREFERENCE:-}"
+
+PREFERENCE_LINE=""
+if [ -n "$DHCPV6_PREFERENCE" ]; then
+    PREFERENCE_LINE="option dhcp6.preference $DHCPV6_PREFERENCE;"
+fi
 
 if ! ip -6 addr show "$IFACE" | grep -q "scope global"; then
     echo "[dhcpd6] ERROR: No global IPv6 address on $IFACE" >&2
@@ -23,6 +29,7 @@ preferred-lifetime 120;
 option dhcp-renewal-time 60;
 option dhcp-rebinding-time 105;
 option dhcp6.rapid-commit;
+$PREFERENCE_LINE
 
 subnet6 $DHCPV6_SUBNET {
     range6 $DHCPV6_RANGE_START $DHCPV6_RANGE_END;

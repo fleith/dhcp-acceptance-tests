@@ -62,6 +62,23 @@ class EnvironmentCapabilityTests(unittest.TestCase):
 
         self.assertEqual(skipped, [])
 
+    def test_kea_predictable_iid_divergence_skips_strict_scenario(self):
+        skipped = []
+        scenario = SimpleNamespace(
+            tags={"reference_predictable_iid_divergence"},
+            effective_tags={"reference_predictable_iid_divergence"},
+            skip=skipped.append,
+        )
+
+        with patch.dict(
+            os.environ,
+            {"TEST_SERVER_IMPL": "kea", "TEST_SERVER_VERSION": "kea-stable"},
+            clear=False,
+        ):
+            environment.before_scenario(SimpleNamespace(), scenario)
+
+        self.assertEqual(len(skipped), 1)
+        self.assertIn("kea/kea-stable", skipped[0])
 
 if __name__ == "__main__":
     unittest.main()
