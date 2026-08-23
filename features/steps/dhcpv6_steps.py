@@ -133,6 +133,7 @@ def step_when_send_request(context):
 
     context_storage_v6["request_trid"] = trid
     context_storage_v6["request_sniffer"] = sniffer
+    context_storage_v6["request_packet"] = request
 
 
 @then("the server responds with a DHCPv6 REPLY that finalizes the lease")
@@ -159,6 +160,7 @@ def step_then_reply_finalizes_lease(context):
     context_storage_v6["leased_ipv6"] = leased_ip
     context_storage_v6["leased_preferred_lifetime"] = leased_iaaddr.preflft
     context_storage_v6["leased_valid_lifetime"] = leased_iaaddr.validlft
+    context_storage_v6["request_reply"] = reply
 
 
 @when("the client sends a DHCPv6 RENEW message")
