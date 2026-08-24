@@ -56,6 +56,7 @@ def step_then_reply_contains_dns_configuration(context, dns_server, domain):
     assert replies, "No matching DHCPv6 REPLY for INFORMATION-REQUEST received"
 
     reply = replies[0]
+    context_storage_v6["information_reply"] = reply
     assert _get_server_duid(reply), (
         "DHCPv6 INFORMATION-REQUEST REPLY missing Server Identifier"
     )
@@ -89,4 +90,17 @@ def step_then_reply_contains_dns_configuration(context, dns_server, domain):
     assert expected_domain in domains, (
         f"DHCPv6 REPLY domain search list {sorted(domains)} does not include "
         f"{expected_domain}"
+    )
+
+
+@then("the INFORMATION-REQUEST REPLY uses the learned server DUID")
+def step_then_information_reply_uses_learned_server_duid(context):
+    reply = context_storage_v6.get("information_reply")
+    assert reply is not None, "No validated INFORMATION-REQUEST REPLY is available"
+    expected = context_storage_v6.get("server_duid")
+    assert expected is not None, "No server DUID was learned from ADVERTISE"
+    actual = _get_server_duid(reply)
+    assert _duids_equal(actual, expected), (
+        "INFORMATION-REQUEST REPLY changed the server DUID: "
+        f"expected {expected!r}, got {actual!r}"
     )

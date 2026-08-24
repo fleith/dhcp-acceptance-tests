@@ -35,6 +35,13 @@ Feature: DHCPv6 Prefix Delegation (RFC 9915)
     Then the server returns both address and prefix bindings
     And their applicable T1 and T2 timers are consistent
 
+  @rfc9915_reply_closure
+  Scenario: Combined address and prefix renewal preserves identifiers and timers
+    When the client requests an IA_NA and an IA_PD together
+    Then the server returns both address and prefix bindings
+    When the client renews the combined address and prefix binding
+    Then the combined RENEW reply preserves identifiers and equal IA timers
+
   Scenario: Multiple IA_PD options have independent identities
     When the client requests two delegated prefixes with unique IAIDs
     Then the server returns two unique delegated prefixes for those IAIDs

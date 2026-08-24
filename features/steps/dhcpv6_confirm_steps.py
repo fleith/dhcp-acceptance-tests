@@ -13,6 +13,8 @@ from dhcpv6_support import (
     client_duid as _client_duid,
     context_storage_v6,
     dhcpv6_packets as _dhcpv6_packets,
+    duids_equal as _duids_equal,
+    get_server_duid as _get_server_duid,
     ia_na as _ia_na,
     new_trid as _new_trid,
     require_scapy_v6 as _require_scapy_v6,
@@ -74,11 +76,14 @@ def _send_confirm(address, include_client_id=True, include_server_id=False, time
 
 
 def _confirm_replies():
-    return _dhcpv6_packets(
+    replies = _dhcpv6_packets(
         context_storage_v6["confirm_sniffer"],
         "DHCP6_Reply",
         context_storage_v6["confirm_trid"],
     )
+    if replies:
+        context_storage_v6["confirm_reply"] = replies[0]
+    return replies
 
 
 @when("the client sends a DHCPv6 CONFIRM for its active address")
@@ -135,6 +140,19 @@ def step_then_confirm_not_on_link(context):
     assert STATUS_NOT_ON_LINK in statuses, (
         f"CONFIRM REPLY missing NotOnLink status; observed {statuses}"
     )
+
+
+@then("the matching DHCPv6 CONFIRM reply echoes both identifiers")
+def step_then_confirm_reply_echoes_identifiers(context):
+    reply = context_storage_v6.get("confirm_reply")
+    assert reply is not None, "No validated DHCPv6 CONFIRM REPLY is available"
+    client_id = reply.getlayer(_cls("DHCP6OptClientId"))
+    assert _duids_equal(getattr(client_id, "duid", None), _client_duid()), (
+        "DHCPv6 CONFIRM REPLY Client Identifier does not match the request"
+    )
+    assert _duids_equal(
+        _get_server_duid(reply), context_storage_v6["server_duid"]
+    ), "DHCPv6 CONFIRM REPLY Server Identifier does not match the lease server"
 
 
 @then("the server does not answer the malformed DHCPv6 CONFIRM")

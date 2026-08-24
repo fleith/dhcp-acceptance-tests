@@ -767,6 +767,12 @@ def step_then_server_returns_address_and_prefix(context):
         "delegation": delegation,
     })
     context_storage_v6["pd_combined_address_ia"] = ia_na
+    context_storage_v6["pd_combined_address"] = {
+        "address": ia_addr.addr,
+        "preferred": int(ia_addr.preflft),
+        "valid": int(ia_addr.validlft),
+        "iaid": int(ia_na.iaid),
+    }
     context_storage_v6["pd_combined_delegation"] = delegation
 
 
@@ -788,6 +794,82 @@ def step_then_combined_timers_are_consistent(context):
         assert min(positive_t1) <= min(positive_t2), (
             "Earliest combined renewal timer occurs after earliest rebind timer"
         )
+
+
+@when("the client renews the combined address and prefix binding")
+def step_when_renew_combined_binding(context):
+    client = _primary_client()
+    address = context_storage_v6["pd_combined_address"]
+    delegation = context_storage_v6["pd_combined_delegation"]
+    ia_na = _cls("DHCP6OptIA_NA")(
+        iaid=address["iaid"],
+        ianaopts=[
+            _cls("DHCP6OptIAAddress")(
+                addr=address["address"],
+                preflft=address["preferred"],
+                validlft=address["valid"],
+            )
+        ],
+    )
+    ia_pd = _ia_pd(
+        delegation["iaid"],
+        prefixes=[
+            _ia_prefix(
+                delegation["network"],
+                delegation["network"].prefixlen,
+                delegation["preferred"],
+                delegation["valid"],
+            )
+        ],
+    )
+    _, reply = _send_message(
+        "DHCP6_Renew",
+        "DHCP6_Reply",
+        client,
+        [ia_na, ia_pd],
+        server_duid=context_storage_v6["pd_combined_server_duid"],
+    )
+    context_storage_v6["pd_combined_renew_reply"] = reply
+
+
+@then("the combined RENEW reply preserves identifiers and equal IA timers")
+def step_then_combined_renew_identifiers_and_timers(context):
+    reply = context_storage_v6["pd_combined_renew_reply"]
+    client = _primary_client()
+    client_id = reply.getlayer(_cls("DHCP6OptClientId"))
+    assert _duids_equal(getattr(client_id, "duid", None), client["duid"]), (
+        "Combined RENEW REPLY Client Identifier does not match the request"
+    )
+    expected_server = context_storage_v6["pd_combined_server_duid"]
+    assert _duids_equal(_get_server_duid(reply), expected_server), (
+        "Combined RENEW REPLY Server Identifier does not match the selected server"
+    )
+
+    address = context_storage_v6["pd_combined_address"]
+    ia_na = reply.getlayer(_cls("DHCP6OptIA_NA"))
+    assert getattr(ia_na, "iaid", None) == address["iaid"], (
+        "Combined RENEW REPLY changed the IA_NA IAID"
+    )
+    ia_address = reply.getlayer(_cls("DHCP6OptIAAddress"))
+    assert getattr(ia_address, "addr", None) == address["address"], (
+        "Combined RENEW REPLY changed the active IA_NA address"
+    )
+
+    delegation = context_storage_v6["pd_combined_delegation"]
+    ia_pd = _pd_for_iaid(reply, delegation["iaid"])
+    renewed_delegation = _delegation(ia_pd)
+    assert renewed_delegation["network"] == delegation["network"], (
+        "Combined RENEW REPLY changed the active delegated prefix"
+    )
+    assert int(ia_na.T1) == renewed_delegation["t1"], (
+        f"Combined RENEW returned unequal T1 values: {ia_na.T1} and "
+        f"{renewed_delegation['t1']}"
+    )
+    assert int(ia_na.T2) == renewed_delegation["t2"], (
+        f"Combined RENEW returned unequal T2 values: {ia_na.T2} and "
+        f"{renewed_delegation['t2']}"
+    )
+    _assert_configured_delegation(renewed_delegation)
 
 
 @when("the client requests two delegated prefixes with unique IAIDs")

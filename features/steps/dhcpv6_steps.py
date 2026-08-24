@@ -12,6 +12,7 @@ from dhcpv6_support import (
     client_duid as _client_duid,
     context_storage_v6,
     dhcpv6_packets as _dhcpv6_packets,
+    duids_equal as _duids_equal,
     ensure_interface_ipv6 as _ensure_interface_ipv6,
     get_iaaddr as _get_iaaddr,
     get_server_duid as _get_server_duid,
@@ -204,8 +205,20 @@ def step_then_reply_extends_lease(context):
     assert replies, "No DHCPv6 REPLY for RENEW received"
 
     reply = replies[0]
+    context_storage_v6["renew_reply"] = reply
     renewed_ip = _get_iaaddr(reply)
     assert renewed_ip, "DHCPv6 RENEW REPLY missing IA Address"
     assert ipaddress.ip_address(renewed_ip) in ipaddress.ip_network(SUBNET_V6), (
         f"Renewed IPv6 {renewed_ip} not in subnet {SUBNET_V6}"
+    )
+    client_id = reply.getlayer(_cls("DHCP6OptClientId"))
+    assert _duids_equal(getattr(client_id, "duid", None), _client_duid()), (
+        "DHCPv6 RENEW REPLY Client Identifier does not match the request"
+    )
+    assert _duids_equal(_get_server_duid(reply), context_storage_v6["server_duid"]), (
+        "DHCPv6 RENEW REPLY Server Identifier does not match the selected server"
+    )
+    renewed_ia = reply.getlayer(_cls("DHCP6OptIA_NA"))
+    assert getattr(renewed_ia, "iaid", None) == _iaid(), (
+        "DHCPv6 RENEW REPLY IA_NA does not match the requested IAID"
     )

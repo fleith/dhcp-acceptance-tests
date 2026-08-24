@@ -3,16 +3,19 @@ Feature: DHCPv6 address confirmation (RFC 9915)
   A client that may have changed links should be able to confirm whether its
   existing address is still appropriate without renewing the lease.
 
+  @rfc9915_reply_closure
   Scenario: Server confirms an address that remains on-link
     Given a client holds a DHCPv6 lease from the server
     When the client sends a DHCPv6 CONFIRM for its active address
     Then the matching DHCPv6 CONFIRM reply reports Success
+    And the matching DHCPv6 CONFIRM reply echoes both identifiers
 
-  @negative
+  @negative @rfc9915_reply_closure
   Scenario: Server rejects an address from another link
     Given a client holds a DHCPv6 lease from the server
     When the client sends a DHCPv6 CONFIRM for an off-link address
     Then the matching DHCPv6 CONFIRM reply reports NotOnLink
+    And the matching DHCPv6 CONFIRM reply echoes both identifiers
 
   @negative
   Scenario: Malformed CONFIRM messages are ignored without poisoning the server

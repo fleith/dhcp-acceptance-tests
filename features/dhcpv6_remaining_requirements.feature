@@ -31,6 +31,18 @@ Feature: Remaining DHCPv6 server requirements from RFC 9915
     When the client sends a DHCPv6 RENEW message
     Then the server responds with a DHCPv6 REPLY extending the lease
 
+  @orchestrated @rfc9915_rebind_disabled @negative @reference_disabled_rebind_policy_divergence
+  Scenario: Disabled binding creation returns NoBinding for unknown REBIND
+    Given the DHCPv6 server is running
+    When an unknown client sends a DHCPv6 REBIND with an on-link address hint
+    Then the unknown REBIND reply reports NoBinding without assigning an address
+
+  @orchestrated @rfc9915_rebind_disabled @known_divergence @non_compliance
+  Scenario: Reference servers omit NoBinding when Rapid Commit is disabled
+    Given the DHCPv6 server is running
+    When an unknown client sends a DHCPv6 REBIND with an on-link address hint
+    Then the reference unknown REBIND reply omits the required NoBinding status
+
   @rfc9915_preference
   Scenario: DHCPv6 server advertises the configured effective preference
     Given the DHCPv6 server is running
@@ -55,3 +67,18 @@ Feature: Remaining DHCPv6 server requirements from RFC 9915
     Then no direct server response contains Interface-ID
     When a client sends a DHCPv6 SOLICIT message
     Then the client receives a DHCPv6 ADVERTISE from the server
+
+  @negative @rfc9915_reply_closure
+  Scenario: Interface-ID is absent across direct DHCPv6 lifecycle handlers
+    Given a client holds a DHCPv6 lease from the server
+    When the client sends a DHCPv6 RENEW message
+    Then the server responds with a DHCPv6 REPLY extending the lease
+    When the client sends a DHCPv6 REBIND message
+    Then a matching DHCPv6 REPLY extends the same lease
+    When the client sends a DHCPv6 CONFIRM for its active address
+    Then the matching DHCPv6 CONFIRM reply reports Success
+    When a client sends a DHCPv6 INFORMATION-REQUEST for DNS configuration
+    Then the matching DHCPv6 REPLY contains DNS server "2001:4860:4860::8888" and domain "example.test"
+    When the client sends a DHCPv6 RELEASE for its active lease
+    Then the server returns a successful DHCPv6 RELEASE reply
+    And every captured direct lifecycle response contains no Interface-ID

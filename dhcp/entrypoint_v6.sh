@@ -11,10 +11,16 @@ DHCPV6_PD_RANGE_START="${DHCPV6_PD_RANGE_START:-fd00:30::}"
 DHCPV6_PD_RANGE_END="${DHCPV6_PD_RANGE_END:-fd00:30:0:f::}"
 DHCPV6_PD_DELEGATED_LEN="${DHCPV6_PD_DELEGATED_LEN:-64}"
 DHCPV6_PREFERENCE="${DHCPV6_PREFERENCE:-}"
+DHCPV6_RAPID_COMMIT="${DHCPV6_RAPID_COMMIT:-1}"
 
 PREFERENCE_LINE=""
 if [ -n "$DHCPV6_PREFERENCE" ]; then
     PREFERENCE_LINE="option dhcp6.preference $DHCPV6_PREFERENCE;"
+fi
+
+RAPID_COMMIT_LINE=""
+if [ "$DHCPV6_RAPID_COMMIT" = "1" ]; then
+    RAPID_COMMIT_LINE="option dhcp6.rapid-commit;"
 fi
 
 if ! ip -6 addr show "$IFACE" | grep -q "scope global"; then
@@ -28,7 +34,7 @@ default-lease-time 120;
 preferred-lifetime 120;
 option dhcp-renewal-time 60;
 option dhcp-rebinding-time 105;
-option dhcp6.rapid-commit;
+$RAPID_COMMIT_LINE
 $PREFERENCE_LINE
 
 subnet6 $DHCPV6_SUBNET {
