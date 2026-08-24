@@ -73,6 +73,30 @@ def _matching_responses(sniffer, transactions):
     return packets
 
 
+def _nested_options(packet, option_class):
+    matches = []
+    visited = set()
+
+    def walk(value):
+        if value is None or id(value) in visited:
+            return
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                walk(item)
+            return
+        if not hasattr(value, "fields_desc"):
+            return
+        visited.add(id(value))
+        if isinstance(value, option_class):
+            matches.append(value)
+        for field in value.fields_desc:
+            walk(value.getfieldval(field.name))
+        walk(getattr(value, "payload", None))
+
+    walk(packet)
+    return matches
+
+
 @given("the client requests the DHCPv6 Preference option")
 def step_given_client_requests_preference(context):
     context_storage_v6["request_preference"] = True
@@ -211,6 +235,45 @@ def step_then_unknown_rebind_creates_binding(context):
     )
 
 
+@then("the unknown REBIND reply reports NoBinding without assigning an address")
+def step_then_unknown_rebind_reports_no_binding(context):
+    replies = [
+        packet for packet in context_storage_v6["unknown_rebind_responses"]
+        if packet.haslayer(_cls("DHCP6_Reply"))
+    ]
+    assert replies, "Unknown-binding REBIND received no DHCPv6 REPLY"
+    reply = replies[0]
+    statuses = [
+        int(option.statuscode)
+        for option in _nested_options(reply, _cls("DHCP6OptStatusCode"))
+    ]
+    addresses = _nested_options(reply, _cls("DHCP6OptIAAddress"))
+    assert not addresses, (
+        "NoBinding REBIND REPLY unexpectedly assigned an IA_NA address"
+    )
+    assert 3 in statuses, f"Unknown-binding REBIND missing NoBinding; observed {statuses}"
+    client_id = reply.getlayer(_cls("DHCP6OptClientId"))
+    assert _duids_equal(getattr(client_id, "duid", None), _client_duid()), (
+        "NoBinding REBIND REPLY changed the Client Identifier"
+    )
+
+
+@then("the reference unknown REBIND reply omits the required NoBinding status")
+def step_then_reference_rebind_omits_no_binding(context):
+    replies = [
+        packet for packet in context_storage_v6["unknown_rebind_responses"]
+        if packet.haslayer(_cls("DHCP6_Reply"))
+    ]
+    assert replies, "Reference server no longer replies to unknown REBIND"
+    statuses = [
+        int(option.statuscode)
+        for option in _nested_options(replies[0], _cls("DHCP6OptStatusCode"))
+    ]
+    assert 3 not in statuses, (
+        f"Reference divergence changed; NoBinding is now present in {statuses}"
+    )
+
+
 @then("the ADVERTISE has the configured effective server preference")
 def step_then_advertise_has_effective_preference(context):
     expected = int(os.getenv("TEST_DHCPV6_EXPECTED_PREFERENCE", "0"))
@@ -246,3 +309,36 @@ def step_then_no_response_contains_interface_id(context):
         if packet.haslayer(interface_id)
     ]
     assert not offenders, "Server copied illegal direct-client Interface-ID into its response"
+
+
+@then("every captured direct lifecycle response contains no Interface-ID")
+def step_then_lifecycle_responses_exclude_interface_id(context):
+    interface_id = _cls("DHCP6OptIfaceId")
+    response_keys = (
+        "advertise_packet",
+        "request_reply",
+        "renew_reply",
+        "rebind_reply",
+        "confirm_reply",
+        "information_reply",
+        "release_reply",
+    )
+    missing = [key for key in response_keys if key not in context_storage_v6]
+    assert not missing, f"Direct lifecycle response capture(s) missing: {missing}"
+    offenders = [
+        key for key in response_keys
+        if context_storage_v6[key].haslayer(interface_id)
+    ]
+    assert not offenders, (
+        "Interface-ID appeared in direct lifecycle response(s): "
+        + ", ".join(offenders)
+    )
+
+
+@then("the direct DECLINE reply contains no Interface-ID")
+def step_then_decline_reply_excludes_interface_id(context):
+    reply = context_storage_v6.get("decline_reply")
+    assert reply is not None, "No validated direct DECLINE REPLY is available"
+    assert not reply.haslayer(_cls("DHCP6OptIfaceId")), (
+        "Interface-ID appeared in a direct DECLINE REPLY"
+    )

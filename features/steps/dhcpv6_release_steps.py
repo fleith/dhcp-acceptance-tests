@@ -99,6 +99,7 @@ def step_when_client_releases_lease(context):
 @then("the server returns a successful DHCPv6 RELEASE reply")
 def step_then_server_acknowledges_release(context):
     reply = _matching_release_reply()
+    context_storage_v6["release_reply"] = reply
     statuses = _status_codes(reply)
     failures = [
         (status.statuscode, getattr(status, "statusmsg", b""))

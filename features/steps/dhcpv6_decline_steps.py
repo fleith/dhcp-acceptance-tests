@@ -83,6 +83,7 @@ def step_then_decline_succeeds(context):
     assert replies, "No matching DHCPv6 REPLY for DECLINE received"
 
     reply = replies[0]
+    context_storage_v6["decline_reply"] = reply
     client_id = reply.getlayer(_cls("DHCP6OptClientId"))
     server_id = reply.getlayer(_cls("DHCP6OptServerId"))
     actual_client_duid = getattr(client_id, "duid", None)

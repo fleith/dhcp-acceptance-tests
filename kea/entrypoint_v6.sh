@@ -10,6 +10,16 @@ DHCPV6_PD_PREFIX="${DHCPV6_PD_PREFIX:-fd00:30::}"
 DHCPV6_PD_PREFIX_LEN="${DHCPV6_PD_PREFIX_LEN:-60}"
 DHCPV6_PD_DELEGATED_LEN="${DHCPV6_PD_DELEGATED_LEN:-64}"
 DHCPV6_PREFERENCE="${DHCPV6_PREFERENCE:-}"
+DHCPV6_RAPID_COMMIT="${DHCPV6_RAPID_COMMIT:-1}"
+
+case "$DHCPV6_RAPID_COMMIT" in
+    1) RAPID_COMMIT_JSON=true ;;
+    0) RAPID_COMMIT_JSON=false ;;
+    *)
+        echo "[kea6] ERROR: DHCPV6_RAPID_COMMIT must be 0 or 1" >&2
+        exit 1
+        ;;
+esac
 
 PREFERENCE_OPTION=""
 if [ -n "$DHCPV6_PREFERENCE" ]; then
@@ -80,7 +90,7 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
         "id": 1,
         "subnet": "$DHCPV6_SUBNET",
         "interface": "$IFACE",
-        "rapid-commit": true,
+        "rapid-commit": $RAPID_COMMIT_JSON,
         "pools": [ { "pool": "$DHCPV6_POOL" } ],
         "pd-pools": [
           {

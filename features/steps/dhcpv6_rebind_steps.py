@@ -94,6 +94,7 @@ def step_then_reply_extends_rebound_lease(context):
     )
 
     reply, rebound_iaaddr = matching_replies[0]
+    context_storage_v6["rebind_reply"] = reply
     context_storage_v6["server_duid"] = _get_server_duid(reply)
     assert rebound_iaaddr.preflft > 0, (
         "DHCPv6 REBIND REPLY did not refresh the preferred lifetime"
