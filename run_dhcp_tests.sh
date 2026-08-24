@@ -107,7 +107,7 @@ build_compose_files() {
 configure_version_profile() {
   local mode="$1"
 
-  unset ISC_DHCP_BASE_IMAGE KEA_BASE_IMAGE KEA_INSTALL_MODE TEST_BEHAVE_ARGS
+  unset ISC_DHCP_BASE_IMAGE KEA_BASE_IMAGE KEA_DDNS_IMAGE KEA_INSTALL_MODE TEST_BEHAVE_ARGS
   unset TEST_RESULTS_DIR
   export TEST_SERVER_VERSION="$SERVER_VERSION"
 
@@ -137,6 +137,7 @@ configure_version_profile() {
         VERSION_LABEL="Kea 3.2.0 stable"
       fi
       export KEA_BASE_IMAGE="docker.cloudsmith.io/isc/docker/kea-dhcp${mode#v}:${kea_version}"
+      export KEA_DDNS_IMAGE="docker.cloudsmith.io/isc/docker/kea-dhcp-ddns:${kea_version}"
       export KEA_INSTALL_MODE="alpine"
       ;;
     *)

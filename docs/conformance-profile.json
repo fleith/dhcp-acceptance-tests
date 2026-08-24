@@ -147,16 +147,19 @@
     },
     {
       "id": "GAP-DDNS",
-      "title": "Dynamic DNS update timing and Client FQDN precedence",
+      "title": "Dynamic DNS update timing, Client FQDN precedence, and binding cleanup",
       "status": "covered",
       "mode": "orchestrated",
       "evidence": [
         "features/optional_service_capabilities.feature",
+        "features/dhcpv6_rfc4704_client_fqdn.feature",
         "ddns/observer.py",
         "docker-compose.ddns.yml",
-        "run_ipv4_observability_tests.sh"
+        "docker-compose.ipv6-ddns.yml",
+        "run_ipv4_observability_tests.sh",
+        "run_dhcpv6_rfc4704_tests.sh"
       ],
-      "tags": ["@requires_ddns"]
+      "tags": ["@requires_ddns", "@requires_dhcpv6_ddns"]
     },
     {
       "id": "GAP-MULTI-INTERFACE",
