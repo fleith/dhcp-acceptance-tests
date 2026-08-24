@@ -37,26 +37,31 @@ def _apply_update(request):
             operation = _operation_class(rrset)
             if rrset.rdtype == dns.rdatatype.ANY:
                 if operation == dns.rdataclass.ANY:
-                    _records.pop(name, None)
+                    for key in [key for key in _records if key[0] == name]:
+                        _records.pop(key, None)
                     changes.append(f"delete-name {name}")
                 continue
-            if rrset.rdtype != dns.rdatatype.A:
+            if rrset.rdtype not in (dns.rdatatype.A, dns.rdatatype.AAAA):
                 continue
+            key = (name, rrset.rdtype)
+            record_type = dns.rdatatype.to_text(rrset.rdtype).lower()
             if operation == dns.rdataclass.ANY:
-                _records.pop(name, None)
-                changes.append(f"delete-a {name}")
+                _records.pop(key, None)
+                changes.append(f"delete-{record_type} {name}")
             elif operation == dns.rdataclass.NONE:
                 values = {rdata.address for rdata in rrset}
-                remaining = _records.get(name, set()) - values
+                remaining = _records.get(key, set()) - values
                 if remaining:
-                    _records[name] = remaining
+                    _records[key] = remaining
                 else:
-                    _records.pop(name, None)
-                changes.append(f"delete-a-values {name} {sorted(values)}")
+                    _records.pop(key, None)
+                changes.append(
+                    f"delete-{record_type}-values {name} {sorted(values)}"
+                )
             else:
                 values = {rdata.address for rdata in rrset}
-                _records.setdefault(name, set()).update(values)
-                changes.append(f"add-a {name} {sorted(values)}")
+                _records.setdefault(key, set()).update(values)
+                changes.append(f"add-{record_type} {name} {sorted(values)}")
     for change in changes:
         print(f"[ddns-observer] {change}", flush=True)
 
@@ -89,20 +94,40 @@ def _response_for(wire):
     name = _canonical(question.name)
     if question.rdtype == dns.rdatatype.SOA:
         response.answer.append(_soa_for(question.name))
-    elif question.rdtype in (dns.rdatatype.A, dns.rdatatype.ANY):
+    elif question.rdtype in (dns.rdatatype.A, dns.rdatatype.AAAA):
         with _lock:
-            addresses = sorted(_records.get(name, set()))
+            addresses = sorted(_records.get((name, question.rdtype), set()))
         if addresses:
             response.answer.append(
                 dns.rrset.from_text(
                     name,
                     30,
                     dns.rdataclass.IN,
-                    dns.rdatatype.A,
+                    question.rdtype,
                     *addresses,
                 )
             )
         else:
+            response.set_rcode(dns.rcode.NXDOMAIN)
+            response.authority.append(_soa_for(ZONE))
+    elif question.rdtype == dns.rdatatype.ANY:
+        with _lock:
+            record_sets = [
+                (record_type, sorted(values))
+                for (record_name, record_type), values in _records.items()
+                if record_name == name and values
+            ]
+        for record_type, values in record_sets:
+            response.answer.append(
+                dns.rrset.from_text(
+                    name,
+                    30,
+                    dns.rdataclass.IN,
+                    record_type,
+                    *values,
+                )
+            )
+        if not record_sets:
             response.set_rcode(dns.rcode.NXDOMAIN)
             response.authority.append(_soa_for(ZONE))
     else:

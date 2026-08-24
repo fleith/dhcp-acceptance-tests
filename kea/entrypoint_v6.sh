@@ -11,6 +11,14 @@ DHCPV6_PD_PREFIX_LEN="${DHCPV6_PD_PREFIX_LEN:-60}"
 DHCPV6_PD_DELEGATED_LEN="${DHCPV6_PD_DELEGATED_LEN:-64}"
 DHCPV6_PREFERENCE="${DHCPV6_PREFERENCE:-}"
 DHCPV6_RAPID_COMMIT="${DHCPV6_RAPID_COMMIT:-1}"
+DHCPV6_DDNS_MANAGER_IP="${DHCPV6_DDNS_MANAGER_IP:-127.0.0.1}"
+DHCPV6_DDNS_MANAGER_PORT="${DHCPV6_DDNS_MANAGER_PORT:-53001}"
+DHCPV6_DDNS_SUFFIX="${DHCPV6_DDNS_SUFFIX:-dhcp-acceptance.test}"
+DHCPV6_RENEW_TIMER="${DHCPV6_RENEW_TIMER:-60}"
+DHCPV6_REBIND_TIMER="${DHCPV6_REBIND_TIMER:-105}"
+DHCPV6_PREFERRED_LIFETIME="${DHCPV6_PREFERRED_LIFETIME:-120}"
+DHCPV6_VALID_LIFETIME="${DHCPV6_VALID_LIFETIME:-120}"
+DHCPV6_RECLAIM_TIMER_WAIT="${DHCPV6_RECLAIM_TIMER_WAIT:-10}"
 
 case "$DHCPV6_RAPID_COMMIT" in
     1) RAPID_COMMIT_JSON=true ;;
@@ -72,19 +80,29 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
       "interfaces": [ "$IFACE" ]
     },
     "dhcp-ddns": {
-      "enable-updates": true
+      "enable-updates": true,
+      "server-ip": "$DHCPV6_DDNS_MANAGER_IP",
+      "server-port": $DHCPV6_DDNS_MANAGER_PORT
     },
     "ddns-send-updates": true,
-    "ddns-qualifying-suffix": "dhcp-acceptance.test",
+    "ddns-qualifying-suffix": "$DHCPV6_DDNS_SUFFIX",
     "lease-database": {
       "type": "memfile",
       "name": "/var/lib/kea/kea-leases6.csv",
       "persist": true
     },
-    "renew-timer": 60,
-    "rebind-timer": 105,
-    "preferred-lifetime": 120,
-    "valid-lifetime": 120,
+    "renew-timer": $DHCPV6_RENEW_TIMER,
+    "rebind-timer": $DHCPV6_REBIND_TIMER,
+    "preferred-lifetime": $DHCPV6_PREFERRED_LIFETIME,
+    "valid-lifetime": $DHCPV6_VALID_LIFETIME,
+    "expired-leases-processing": {
+      "reclaim-timer-wait-time": $DHCPV6_RECLAIM_TIMER_WAIT,
+      "flush-reclaimed-timer-wait-time": 25,
+      "hold-reclaimed-time": 0,
+      "max-reclaim-leases": 100,
+      "max-reclaim-time": 250,
+      "unwarned-reclaim-cycles": 5
+    },
     "subnet6": [
       {
         "id": 1,

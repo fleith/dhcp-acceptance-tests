@@ -18,7 +18,7 @@ requirement. Product-specific applicability review is still required.
 
 | Requirements | Covered | Partial | Conditional | Gap | Excluded |
 |---:|---:|---:|---:|---:|---:|
-| 82 | 63 | 16 | 3 | 0 | 0 |
+| 82 | 68 | 12 | 2 | 0 | 0 |
 
 | RFC | Title | Requirements | Covered | Partial | Conditional | Gap | Excluded |
 |---:|---|---:|---:|---:|---:|---:|---:|
@@ -30,7 +30,7 @@ requirement. Product-specific applicability review is still required.
 | [3442](https://www.rfc-editor.org/rfc/rfc3442.html) | Classless Static Route Option | 3 | 3 | 0 | 0 | 0 | 0 |
 | [4361](https://www.rfc-editor.org/rfc/rfc4361.html) | Node-specific Client Identifiers for DHCPv4 | 1 | 1 | 0 | 0 | 0 | 0 |
 | [4702](https://www.rfc-editor.org/rfc/rfc4702.html) | DHCP Client FQDN Option | 6 | 4 | 1 | 1 | 0 | 0 |
-| [4704](https://www.rfc-editor.org/rfc/rfc4704.html) | DHCPv6 Client FQDN Option | 6 | 1 | 4 | 1 | 0 | 0 |
+| [4704](https://www.rfc-editor.org/rfc/rfc4704.html) | DHCPv6 Client FQDN Option | 6 | 6 | 0 | 0 | 0 | 0 |
 | [6842](https://www.rfc-editor.org/rfc/rfc6842.html) | Client Identifier Option in DHCP Server Replies | 2 | 2 | 0 | 0 | 0 | 0 |
 | [8925](https://www.rfc-editor.org/rfc/rfc8925.html) | IPv6-Only Preferred Option for DHCPv4 | 9 | 9 | 0 | 0 | 0 | 0 |
 | [9915](https://www.rfc-editor.org/rfc/rfc9915.html) | Dynamic Host Configuration Protocol for IPv6 | 27 | 19 | 7 | 1 | 0 | 0 |
@@ -117,12 +117,12 @@ requirement. Product-specific applicability review is still required.
 
 | ID | Section | Level | Status | Requirement | Evidence / rationale |
 |---|---:|---|---|---|---|
-| `RFC4704-4.1-MUST-01` | [4.1](https://www.rfc-editor.org/rfc/rfc4704.html#section-4.1) | MUST | **partial** | Clear reserved MBZ flag bits when sending Client FQDN and ignore them when receiving it. | [Server negotiates DNS update responsibility using legal flags](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>Legal S O and N combinations are covered on Kea but nonzero MBZ input is not. |
-| `RFC4704-4.2-MUST-01` | [4.2](https://www.rfc-editor.org/rfc/rfc4704.html#section-4.2) | MUST | **partial** | Encode the Domain Name using DHCPv6 DNS wire format and change it only when the FQDN changes. | [Client negotiates its FQDN while acquiring a lease](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>[Server remains responsive after a truncated DNS label](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>Valid and truncated names are covered but stability across renewal is not. |
-| `RFC4704-4.2-SHOULD-01` | [4.2](https://www.rfc-editor.org/rfc/rfc4704.html#section-4.2) | SHOULD | **partial** | Send the complete fully qualified domain name in Client FQDN. | [Server handles a partial client name](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>The scenario validates a legal returned name but not a configured suffix for every server. |
+| `RFC4704-4.1-MUST-01` | [4.1](https://www.rfc-editor.org/rfc/rfc4704.html#section-4.1) | MUST | **covered** | Clear reserved MBZ flag bits when sending Client FQDN and ignore them when receiving it. | [Server negotiates DNS update responsibility using legal flags](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>[Server ignores client MBZ bits and clears them in its response](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>Legal flag negotiation and nonzero client MBZ input are both checked; every response MBZ bit must be zero. |
+| `RFC4704-4.2-MUST-01` | [4.2](https://www.rfc-editor.org/rfc/rfc4704.html#section-4.2) | MUST | **covered** | Encode the Domain Name using DHCPv6 DNS wire format and change it only when the FQDN changes. | [Client negotiates its FQDN while acquiring a lease](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>[Server remains responsive after a truncated DNS label](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>ADVERTISE and REPLY names are decoded strictly, and RENEW must preserve the exact DNS-wire name when the client FQDN is unchanged. |
+| `RFC4704-4.2-SHOULD-01` | [4.2](https://www.rfc-editor.org/rfc/rfc4704.html#section-4.2) | SHOULD | **covered** | Send the complete fully qualified domain name in Client FQDN. | [Server completes a partial client name with its configured suffix](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>The Kea reference fixture must append its configured qualifying suffix and return a terminated DNS-wire FQDN. |
 | `RFC4704-6-MUST-01` | [6](https://www.rfc-editor.org/rfc/rfc4704.html#section-6) | MUST | **covered** | Include Client FQDN only in ADVERTISE or REPLY when the client supplied it and requested it in ORO. | [Server omits an unrequested Client FQDN option](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>[Server does not invent a Client FQDN option](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>Kea 2.2 is separately documented as a known divergence. |
-| `RFC4704-6-MUST-NOT-01` | [6](https://www.rfc-editor.org/rfc/rfc4704.html#section-6) | MUST NOT | **partial** | Do not initiate DNS updates while responding with ADVERTISE. | [A committed FQDN lease creates its forward DNS record](../features/optional_service_capabilities.feature)<br>The capability test checks a post-commit record but not the absence of an earlier ADVERTISE-time update. |
-| `RFC4704-6.1-SHOULD-01` | [6.1](https://www.rfc-editor.org/rfc/rfc4704.html#section-6.1) | SHOULD | **conditional** | Delete server-created DNS records when the associated binding expires or is terminated. | [A committed FQDN lease creates its forward DNS record](../features/optional_service_capabilities.feature)<br>Record creation is conditional; expiry and release cleanup are not asserted. |
+| `RFC4704-6-MUST-NOT-01` | [6](https://www.rfc-editor.org/rfc/rfc4704.html#section-6) | MUST NOT | **covered** | Do not initiate DNS updates while responding with ADVERTISE. | [DNS update waits until the DHCPv6 FQDN lease is committed](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>The isolated Kea D2 profile proves the authoritative observer remains empty after ADVERTISE and publishes AAAA only after REQUEST/REPLY. |
+| `RFC4704-6.1-SHOULD-01` | [6.1](https://www.rfc-editor.org/rfc/rfc4704.html#section-6.1) | SHOULD | **covered** | Delete server-created DNS records when the associated binding expires or is terminated. | [RELEASE removes the server-created DHCPv6 FQDN record](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>[Lease expiry removes the server-created DHCPv6 FQDN record](../features/dhcpv6_rfc4704_client_fqdn.feature)<br>The isolated Kea D2 profile observes AAAA removal after explicit RELEASE and after short-lease reclamation. |
 
 ## RFC 6842: Client Identifier Option in DHCP Server Replies
 
