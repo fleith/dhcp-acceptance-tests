@@ -33,6 +33,16 @@ RESERVED_HINTS = (
     "fd00:29:0:0:200:5eff:fe00:5213",
     "fd00:29:0:0:fdff:ffff:ffff:ff80",
 )
+RESERVED_POOL_ALLOWED = {
+    ipaddress.ip_address(value.strip())
+    for value in os.getenv("TEST_DHCPV6_RESERVED_POOL_ALLOWED", "").split(",")
+    if value.strip()
+}
+RESERVED_POOL_FORBIDDEN = {
+    ipaddress.ip_address(value.strip())
+    for value in os.getenv("TEST_DHCPV6_RESERVED_POOL_FORBIDDEN", "").split(",")
+    if value.strip()
+}
 
 
 def _ia_na_for(iaid, address=None):
@@ -138,6 +148,75 @@ def step_then_no_reserved_iid_is_offered(context):
             observed.append(ipaddress.ip_address(address))
     forbidden = reserved.intersection(observed)
     assert not forbidden, f"Server offered reserved IPv6 address(es): {sorted(forbidden)}"
+
+
+@when("distinct clients exhaust the reserved-IID boundary pools")
+def step_when_exhaust_reserved_iid_boundary_pools(context):
+    _require_scapy_v6()
+    assert RESERVED_POOL_ALLOWED and RESERVED_POOL_FORBIDDEN, (
+        "Reserved-IID pool topology requires TEST_DHCPV6_RESERVED_POOL_ALLOWED "
+        "and TEST_DHCPV6_RESERVED_POOL_FORBIDDEN"
+    )
+    assert RESERVED_POOL_ALLOWED.isdisjoint(RESERVED_POOL_FORBIDDEN)
+    observed = []
+    for _ in range(len(RESERVED_POOL_ALLOWED) + 1):
+        trid = _new_trid()
+        sniffer = _start_v6_sniffer(timeout=5)
+        sendp(
+            _solicit(
+                _random_duid(),
+                int.from_bytes(os.urandom(4), "big"),
+                trid,
+                rapid_commit=True,
+            ),
+            iface=INTERFACE,
+            verbose=False,
+        )
+        responses = _matching_responses(sniffer, {trid: True})
+        addresses = {
+            ipaddress.ip_address(option.addr)
+            for response in responses
+            for option in _nested_options(response, _cls("DHCP6OptIAAddress"))
+            if int(getattr(option, "validlft", 0)) > 0
+        }
+        assert len(addresses) <= 1, (
+            f"One boundary-pool transaction returned multiple addresses: {addresses}"
+        )
+        observed.extend(addresses)
+    context_storage_v6["reserved_pool_observed"] = observed
+
+
+@then("every allocatable boundary address is committed exactly once")
+def step_then_allowed_boundary_addresses_are_committed(context):
+    observed = context_storage_v6["reserved_pool_observed"]
+    assert len(observed) == len(set(observed)), (
+        f"Reserved-IID pool allocated duplicate active addresses: {observed}"
+    )
+    assert set(observed) == RESERVED_POOL_ALLOWED, (
+        "Allocator did not use exactly the non-reserved boundary candidates: "
+        f"expected={sorted(RESERVED_POOL_ALLOWED)}, observed={sorted(observed)}"
+    )
+
+
+@then("no reserved boundary IID is assigned")
+def step_then_reserved_boundary_addresses_are_not_assigned(context):
+    forbidden = RESERVED_POOL_FORBIDDEN.intersection(
+        context_storage_v6["reserved_pool_observed"]
+    )
+    assert not forbidden, (
+        f"Allocator committed reserved IPv6 boundary address(es): {sorted(forbidden)}"
+    )
+
+
+@then("the reference allocator assigns a reserved boundary IID")
+def step_then_reference_assigns_reserved_boundary_address(context):
+    forbidden = RESERVED_POOL_FORBIDDEN.intersection(
+        context_storage_v6["reserved_pool_observed"]
+    )
+    assert forbidden, (
+        "Reference allocator no longer assigns any reserved IID from the "
+        "explicit boundary pools"
+    )
 
 
 @when("several distinct clients request DHCPv6 addresses")

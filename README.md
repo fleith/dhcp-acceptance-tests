@@ -95,6 +95,24 @@ bash ./run_dhcpv6_rfc4704_tests.sh
 # RFC 9915 exact opaque Interface-ID policy through single and nested relays
 bash ./run_dhcpv6_interface_id_tests.sh
 
+# RFC 9915 allocator behavior with reserved IIDs inside configured pools
+bash ./run_dhcpv6_reserved_iid_tests.sh
+
+# Target-service REQUEST regeneration with a matching-event counter adapter
+TEST_DHCPV6_REQUEST_COUNTER_COMMAND=/app/adapter/request-count \
+  bash ./run_dhcpv6_request_regeneration_tests.sh --compose-file docker-compose.target.yml
+
+# Target-service two-subnet generation, restart, collision, and reuse lifecycle
+TEST_DHCPV6_GENERATION_RESTART_COMMAND=/app/adapter/restart-dhcpv6 \
+TEST_DHCPV6_GENERATION_RELAY_SUBNET=fd00:30::/64 \
+TEST_DHCPV6_GENERATION_RELAY_LINK_ADDRESS=fd00:30::1 \
+TEST_DHCPV6_GENERATION_POOL_CAPACITY_PER_SUBNET=24 \
+  bash ./run_dhcpv6_generation_lifecycle_tests.sh --compose-file docker-compose.target.yml
+
+# Target-service DHCPv4 offer hold immediately before and after exact expiry
+TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS=30 \
+  bash ./run_offer_hold_boundary_tests.sh --compose-file docker-compose.target.yml
+
 # RFC 9915 authenticated Reconfigure against a target-service adapter
 TEST_RECONFIGURE_TRIGGER_COMMAND=/app/adapter/trigger-reconfigure \
   bash ./run_dhcpv6_reconfigure_tests.sh --compose-file docker-compose.target.yml
@@ -166,8 +184,17 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `DHCPV6_DDNS_MANAGER_IP` | `127.0.0.1` | Kea D2 NameChangeRequest target; the isolated RFC 4704 profile supplies `172.29.0.5` |
 | `DHCPV6_DDNS_SUFFIX` | `dhcp-acceptance.test` | Qualifying suffix used for partial DHCPv6 Client FQDN names |
 | `DHCPV6_VALID_LIFETIME` | `120` | DHCPv6 valid lifetime; the isolated RFC 4704 expiry profile uses 12 seconds |
+| `DHCPV6_POOLS_JSON` | empty | Kea-only JSON pool override used by isolated allocator topology profiles |
 | `TEST_RFC4704_DDNS_EXPIRY_TIMEOUT` | `30` | Maximum post-expiry wait for authoritative AAAA cleanup |
 | `TEST_DHCPV6_FORGED_OWNERSHIP_TIMEOUT` | `4` | Maximum seconds to observe a forged IA_NA REQUEST or REBIND response |
+| `TEST_DHCPV6_REQUEST_COUNTER_COMMAND` | empty | Adapter that prints the matching cumulative DHCPv6 REQUEST-processing count |
+| `TEST_DHCPV6_GENERATION_RESTART_COMMAND` | empty | Adapter that persistently restarts the target and returns when ready |
+| `TEST_DHCPV6_GENERATION_DIRECT_SUBNET` | `fd00:29::/64` | Direct subnet used by the generation lifecycle profile |
+| `TEST_DHCPV6_GENERATION_RELAY_SUBNET` | empty | Second served subnet selected by the lifecycle profile's relay |
+| `TEST_DHCPV6_GENERATION_RELAY_LINK_ADDRESS` | empty | Relay link-address that selects the second lifecycle subnet |
+| `TEST_DHCPV6_GENERATION_SAMPLE_PER_SUBNET` | `12` | Initial owners per subnet; exact pool capacity must be twice this value |
+| `TEST_DHCPV6_GENERATION_POOL_CAPACITY_PER_SUBNET` | `0` | Exact usable address count in each lifecycle pool; required by the focused runner |
+| `TEST_DHCPV6_GENERATION_RESPONSE_TIMEOUT` | `8` | Maximum seconds for each lifecycle DHCPv6 exchange |
 | `TEST_RECONFIGURE_TRIGGER_COMMAND` | empty | Target-service adapter that triggers Reconfigure for the client identity exported by the focused profile |
 | `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` | empty | Optional second validator for the captured packet; built-in RKAP/HMAC validation is always performed |
 | `TEST_RECONFIGURE_TIMEOUT` | `5` | Maximum seconds to capture each server-initiated Reconfigure |
@@ -187,6 +214,8 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_CONCURRENT_CLIENTS` | `8` | Bounded number of simultaneous DHCPv4 clients (2..32) |
 | `TEST_DHCPV4_BATCH_DEADLINE` | `15` | Maximum seconds for the bounded concurrent batch |
 | `TEST_DHCPV4_OFFER_HOLD_SECONDS` | `0.75` | Minimum observation window during which competing clients must not receive an unselected offer |
+| `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS` | `0` | Target's exact configured offer-hold duration for pre/post-boundary testing |
+| `TEST_DHCPV4_OFFER_HOLD_CONTENDERS` | `4` | Concurrent contenders used on each side of the offer-hold expiry boundary |
 | `TEST_DHCPV4_CHURN_CYCLES` | `12` | Bounded acquire/release churn cycles (2..64) |
 | `TEST_DHCPV4_FUZZ_CASES` | `24` | Deterministic malformed corpus size (5..128) |
 | `TEST_DHCPV4_PING_CHECK_ADDRESS` | empty | Candidate address used only by the isolated server ping-check runner |
@@ -228,7 +257,7 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 Server-focused coverage spans 12 RFCs: the existing eight plus RFC 3442,
 RFC 4361, RFC 4704, and RFC 8925.
 
-- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling with exact administrative-log evidence, byte-identical initialization-parameter reuse after release, timed multi-client offer-hold enforcement, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate. ISC DHCP 4.4.1, ISC DHCP 4.4.3-P1, and Kea references reoffer an unselected address; that behavior is captured as a known divergence while external targets run the strict check.
+- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling with exact administrative-log evidence, byte-identical initialization-parameter reuse after release, timed multi-client offer-hold enforcement, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate. A target profile adds concurrent contender waves immediately before and after the configured offer-hold expiry and permits exactly one post-expiry winner. ISC DHCP 4.4.1, ISC DHCP 4.4.3-P1, and Kea references reoffer an unselected address; that behavior is captured as a known divergence while external targets run the strict checks.
 - **RFC 2131 pool capacity**: a dedicated bounded run exhausts the DHCPv4 pool, verifies that an additional client receives no offer, releases one lease, and proves the waiting client can acquire that address.
 - **RFC 2132**: required network options, raw Subnet Mask/Router ordering, multi-address DNS encoding, and exact lease-time option length alongside T1/T2 timer validation.
 - **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path with a conflicting primary-pool address hint plus exact response echo on Kea in the multi-subnet Docker topology.
@@ -240,7 +269,7 @@ RFC 4361, RFC 4704, and RFC 8925.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation with strict DNS-wire decoding, complete configured suffixes, legal flag negotiation, nonzero MBZ input clearing, and exact name stability through RENEW. An isolated Kea D2 profile proves that AAAA publication waits for REQUEST/REPLY and that server-created records are deleted after RELEASE and short-lease reclamation. ISC runs only the universal omission checks in this fixture; a tagged, default-excluded divergence documents Kea 2.2 returning FQDN without an ORO request.
 - **RFC 6842**: client-identifier based lease stability across hardware-address changes, byte-for-byte response echo when supplied, and response omission when absent. ISC DHCP 4.4.1's legacy reply omission is recorded as a backend-specific divergence.
 - **RFC 8925**: requested IPv6-mostly scope delivery, configured and zero-default timer encoding, addressless and addressful server strategies, addressful fallback completion, request-list stability, omission on an independently selected non-IPv6-mostly relay pool, Rapid Commit suppression, and an isolated Kea 3.2 proof that an addressless response neither probes nor consumes any bounded-pool candidate.
-- **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation and exclusion from direct messages, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. An isolated Kea profile guards two pools with complete opaque Interface-ID byte strings containing zero and high-bit octets; exact A/B values, truncated/extended/bit-flipped/unknown values, split duplicate options, and both nested relay orders prove exact matching and closest-client relay scope through both offer and lease commitment. A target-service Reconfigure profile independently extracts the negotiated RKAP key, validates the complete HMAC-MD5 and monotonic replay value, checks opt-out behavior and exact direct-message metadata, rejects tampered and replayed messages, and completes the requested RENEW. Reply validation checks exact identifiers for CONFIRM, RENEW, and INFORMATION-REQUEST, plus equal IA_NA/IA_PD renewal timers. The strict ownership tests reject forged IA_NA REQUEST and REBIND claims, while explicit divergence scenarios record that ISC DHCP and Kea reassign the active address during forged REBIND. Rapid Commit-enabled and disabled policy paths are both executable; the references' disabled-policy omission of `NoBinding` is also recorded. Representative reserved-IID hints and a bounded allocation sample cover address-generation edges without claiming exhaustive unpredictability. Authenticated server-initiated Reconfigure remains capability-gated because the bundled reference servers do not implement it.
+- **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation and exclusion from direct messages, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. An isolated Kea profile guards two pools with complete opaque Interface-ID byte strings containing zero and high-bit octets; exact A/B values, truncated/extended/bit-flipped/unknown values, split duplicate options, and both nested relay orders prove exact matching and closest-client relay scope through both offer and lease commitment. Target-service profiles directly prove identical REQUEST regeneration through a server event counter and exercise generated addresses across two subnets, repeated persistent restarts, full-capacity collision checks, release, and exact reuse. Reply validation checks exact identifiers for CONFIRM, RENEW, and INFORMATION-REQUEST, plus equal IA_NA/IA_PD renewal timers. Mixed-ownership REBIND now combines valid and forged IA_NA and IA_PD resources and then revalidates both owners. The reserved-IID profile puts representative forbidden values inside actual allocator pools; Kea 3.2.0 allocates them and is recorded as a divergence. A target-service Reconfigure profile independently validates RKAP/HMAC, replay protection, opt-out behavior, metadata, and post-trigger RENEW. Address-generation sampling remains bounded rather than an exhaustive unpredictability proof, and authenticated Reconfigure remains capability-gated because the bundled references do not implement it.
 
 Additional coverage is intentionally excluded from the 12-RFC server count:
 
@@ -320,11 +349,13 @@ dhcp-acceptance-tests/
 |   |-- dhcpv6_information.feature
 |   |-- dhcpv6_lease.feature
 |   |-- dhcpv6_lifetimes.feature
+|   |-- dhcpv6_address_generation_lifecycle.feature
 |   |-- dhcpv6_prefix_delegation.feature
 |   |-- dhcpv6_rebind.feature
 |   |-- dhcpv6_reconfigure.feature
 |   |-- dhcpv6_relay.feature
 |   |-- dhcpv6_release.feature
+|   |-- dhcpv6_request_regeneration.feature
 |   |-- dhcpv6_rfc4704_client_fqdn.feature
 |   |-- dhcpv4_conformance.feature
 |   |-- dhcpv4_persistence.feature
@@ -344,6 +375,7 @@ dhcp-acceptance-tests/
 |       |-- dhcp_rfc8925_steps.py
 |       |-- dhcpv6_decline_steps.py
 |       |-- dhcpv6_confirm_steps.py
+|       |-- dhcpv6_generation_steps.py
 |       |-- dhcpv6_information_steps.py
 |       |-- dhcpv6_lifetime_steps.py
 |       |-- dhcpv6_prefix_delegation_steps.py
@@ -360,6 +392,7 @@ dhcp-acceptance-tests/
 |-- docker-compose.ddns.yml
 |-- docker-compose.ipv6-ddns.yml
 |-- docker-compose.ipv6-interface-id.yml
+|-- docker-compose.ipv6-reserved-iid.yml
 |-- RFC_EXPANSION_PLAN.md
 |-- run_dhcp_tests.sh
 |-- run_lifecycle_tests.sh
@@ -368,7 +401,11 @@ dhcp-acceptance-tests/
 |-- run_ipv4_observability_tests.sh
 |-- run_dhcpv6_rfc4704_tests.sh
 |-- run_dhcpv6_interface_id_tests.sh
+|-- run_dhcpv6_reserved_iid_tests.sh
+|-- run_dhcpv6_request_regeneration_tests.sh
+|-- run_dhcpv6_generation_lifecycle_tests.sh
 |-- run_dhcpv6_reconfigure_tests.sh
+|-- run_offer_hold_boundary_tests.sh
 |-- run_tests.py
 |-- summarize_junit.py
 |-- tests/test_summarize_junit.py

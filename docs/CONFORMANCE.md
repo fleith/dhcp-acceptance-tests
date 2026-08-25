@@ -29,6 +29,10 @@ needed before making a complete claim.
 | DHCPv6 authenticated Reconfigure | `TEST_RECONFIGURE_TRIGGER_COMMAND=<adapter> bash ./run_dhcpv6_reconfigure_tests.sh --compose-file <target-override>` | RKAP key negotiation, complete HMAC validation, opt-out, tamper/replay rejection, exact metadata, and post-trigger RENEW |
 | DHCPv6 Preference | `bash ./run_dhcpv6_preference_tests.sh --server <server>` | Configured nonzero RFC 9915 server Preference, complementing the zero-default required check |
 | DHCPv6 REBIND policy | `bash ./run_dhcpv6_rebind_policy_tests.sh --server <server>` | Documents the ISC/Kea omission of NoBinding with Rapid Commit disabled; strict target-service assertion remains available separately |
+| DHCPv6 reserved-IID pools | `bash ./run_dhcpv6_reserved_iid_tests.sh` | Exhausts pools containing representative RFC-reserved IIDs and records Kea's reference divergence |
+| DHCPv6 REQUEST regeneration | `TEST_DHCPV6_REQUEST_COUNTER_COMMAND=<adapter> bash ./run_dhcpv6_request_regeneration_tests.sh --compose-file <target-override>` | Combines identical wire retransmission with an exact server-side REQUEST event delta |
+| DHCPv6 generation lifecycle | Supply the generation topology variables and run `bash ./run_dhcpv6_generation_lifecycle_tests.sh --compose-file <target-override>` | Two-subnet uniqueness, repeated persistent restarts, collision avoidance, exhaustion, release, and reuse |
+| DHCPv4 offer-hold boundary | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS=<seconds> bash ./run_offer_hold_boundary_tests.sh --compose-file <target-override>` | Concurrent contender waves immediately before and after the configured expiry boundary |
 | Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
 | Lifecycle | `bash ./run_lifecycle_tests.sh --server <server>` | Graceful restart, SIGKILL recovery, and persistent binding ownership |
 | Configuration safety | `bash ./run_config_safety_tests.sh --server <server> [--overlap-policy reject\|allow]` | Explicit overlap policy and unavailable lease-store rejection |
@@ -110,6 +114,14 @@ address. Nested probes reverse the outer and inner values to prove that policy
 uses the closest-client relay while every RELAY-REPLY layer preserves its own
 opaque bytes through ADVERTISE and committed REPLY.
 
+The reserved-IID runner changes allocator topology rather than relying only on
+client hints. Its three tiny pools contain subnet-router anycast, modified
+EUI-64, and highest-128 boundary values alongside known-safe addresses. The
+strict target assertion requires the exact safe set after exhaustion. Kea
+3.2.0 allocates reserved values from these explicit pools, so the reference
+profile records that result as a known divergence instead of treating it as a
+passing implementation.
+
 ## Capability adapters
 
 Capabilities are skipped unless their name is present in the comma-separated
@@ -125,6 +137,9 @@ reported as a pass.
 | `rfc4702_ascii_unsupported` | Target service configured without legacy ASCII Option 81 support; the scenario requires DORA to succeed while both responses ignore Client FQDN |
 | `dhcpv6_rapid_commit` | DHCPv6 server configured to accept Rapid Commit; the bundled IPv6 reference fixtures enable it and expose the capability by default |
 | `dhcpv6_interface_id_policy` | DHCPv6 server with two pools guarded by exact closest-client Interface-ID matching; the bundled Kea runner supplies the policy and expected ranges |
+| `dhcpv6_request_observability` | `TEST_DHCPV6_REQUEST_COUNTER_COMMAND`, which prints the cumulative number of matching REQUEST-processing events |
+| `dhcpv6_generation_lifecycle` | `TEST_DHCPV6_GENERATION_RESTART_COMMAND`, two served subnets, a usable relay link address, and exact per-subnet pool capacity |
+| `offer_hold_expiry` | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS`, set to the target's configured offer-hold duration; optionally tune contender count |
 | `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP` |
 | `authenticated_reconfigure` | `TEST_RECONFIGURE_TRIGGER_COMMAND`; optionally `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` for a second product-specific validation |
 | `storage_fault` | `TEST_STORAGE_FAIL_COMMAND` and `TEST_STORAGE_RECOVER_COMMAND` for an external target; the bundled reference fixtures use `run_storage_fault_tests.sh` |
@@ -141,6 +156,22 @@ destination, permitted options, and monotonically increasing replay value.
 If the optional external validator is supplied, it receives
 `TEST_RECONFIGURE_PACKET_HEX_FILE`, pointing to the captured link-layer packet
 encoded as hexadecimal, and must exit nonzero when its validation fails.
+
+The REQUEST counter adapter runs before and after retransmission. It receives
+`TEST_DHCPV6_REQUEST_TRID`, `TEST_DHCPV6_REQUEST_DUID_HEX`, and
+`TEST_DHCPV6_REQUEST_PACKET_HEX`, and must print a single non-negative decimal
+counter as its last nonempty output line. The suite requires the second value
+to equal the first plus one while the wire reply retains the same binding.
+
+The generation restart adapter executes twice with
+`TEST_DHCPV6_GENERATION_RESTART_PHASE` set to `1` and `2`. It must return only
+after the service is ready and persistent lease state is available. Configure
+`TEST_DHCPV6_GENERATION_DIRECT_SUBNET`,
+`TEST_DHCPV6_GENERATION_RELAY_SUBNET`,
+`TEST_DHCPV6_GENERATION_RELAY_LINK_ADDRESS`, and
+`TEST_DHCPV6_GENERATION_POOL_CAPACITY_PER_SUBNET` to match the target topology.
+The test deliberately requires capacity to equal twice the configured sample
+size, making full-pool collision and released-address reuse assertions exact.
 
 Kea currently documents client Reconfigure as unsupported, so this profile is
 not advertised by the bundled reference fixtures and remains conditional until

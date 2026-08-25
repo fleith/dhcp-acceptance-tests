@@ -19,8 +19,56 @@
       "title": "Retransmissions, duplicate messages, and transaction idempotency",
       "status": "covered",
       "mode": "required",
-      "evidence": ["features/dhcpv4_conformance.feature"],
+      "evidence": [
+        "features/dhcpv4_conformance.feature",
+        "features/dhcpv6_transaction_validation.feature"
+      ],
       "tags": ["@retransmission"]
+    },
+    {
+      "id": "GAP-DHCPV6-REQUEST-REGENERATION",
+      "title": "Direct proof that retransmitted DHCPv6 REQUEST responses are regenerated",
+      "status": "conditional",
+      "mode": "capability",
+      "evidence": [
+        "features/dhcpv6_request_regeneration.feature",
+        "run_dhcpv6_request_regeneration_tests.sh"
+      ],
+      "tags": ["@requires_dhcpv6_request_observability", "@rfc9915_request_regeneration"]
+    },
+    {
+      "id": "GAP-DHCPV6-GENERATION-LIFECYCLE",
+      "title": "DHCPv6 generation across subnets, restarts, collisions, and reuse",
+      "status": "conditional",
+      "mode": "capability",
+      "evidence": [
+        "features/dhcpv6_address_generation_lifecycle.feature",
+        "run_dhcpv6_generation_lifecycle_tests.sh"
+      ],
+      "tags": ["@requires_dhcpv6_generation_lifecycle", "@rfc9915_generation_lifecycle"]
+    },
+    {
+      "id": "GAP-DHCPV4-OFFER-HOLD-BOUNDARY",
+      "title": "Concurrent DHCPv4 offer ownership at the configured expiry boundary",
+      "status": "conditional",
+      "mode": "capability",
+      "evidence": [
+        "features/dhcpv4_conformance.feature",
+        "run_offer_hold_boundary_tests.sh"
+      ],
+      "tags": ["@requires_offer_hold_expiry", "@offer_hold_boundary"]
+    },
+    {
+      "id": "GAP-DHCPV6-RESERVED-IID-POOLS",
+      "title": "Allocator pools containing reserved IPv6 interface identifiers",
+      "status": "partial",
+      "mode": "orchestrated",
+      "evidence": [
+        "features/dhcpv6_remaining_requirements.feature",
+        "docker-compose.ipv6-reserved-iid.yml",
+        "run_dhcpv6_reserved_iid_tests.sh"
+      ],
+      "tags": ["@rfc9915_reserved_iid_pool", "@rfc9915_reserved_iid_pool_divergence"]
     },
     {
       "id": "GAP-SERVER-PING-CHECK",

@@ -1126,3 +1126,181 @@ def step_then_no_prefix_available(context):
     )
     prefixes = _encapsulated_options(ia_pd, _cls("DHCP6OptIAPrefix"))
     assert not prefixes, "NoPrefixAvail IA_PD must not contain delegated prefixes"
+
+
+def _ia_na_for_binding(iaid, address=None, preferred=0, valid=0):
+    options = []
+    if address is not None:
+        options.append(
+            _cls("DHCP6OptIAAddress")(
+                addr=address,
+                preflft=preferred,
+                validlft=valid,
+            )
+        )
+    return _cls("DHCP6OptIA_NA")(iaid=iaid, ianaopts=options)
+
+
+def _ia_na_for_iaid(packet, expected_iaid):
+    matches = [
+        option
+        for option in _nested_options(packet, _cls("DHCP6OptIA_NA"))
+        if getattr(option, "iaid", None) == expected_iaid
+    ]
+    assert len(matches) == 1, (
+        f"Expected exactly one IA_NA for IAID {expected_iaid:#010x}, "
+        f"found {len(matches)}"
+    )
+    return matches[0]
+
+
+def _address_from_ia_na(ia_na):
+    addresses = [
+        option
+        for option in _nested_options(ia_na, _cls("DHCP6OptIAAddress"))
+    ]
+    assert len(addresses) == 1, (
+        f"Expected one IA Address in IA_NA {ia_na.iaid:#010x}, found {len(addresses)}"
+    )
+    option = addresses[0]
+    return {
+        "iaid": int(ia_na.iaid),
+        "address": option.addr,
+        "preferred": int(option.preflft),
+        "valid": int(option.validlft),
+    }
+
+
+def _complete_combined_binding(client):
+    address_iaid = client["iaid"] ^ 0x40000000
+    _, advertise, server_duid = _solicit(
+        client,
+        [_ia_na_for_binding(address_iaid), _ia_pd(client["iaid"])],
+    )
+    address_offer = _address_from_ia_na(
+        _ia_na_for_iaid(advertise, address_iaid)
+    )
+    pd_offer = _delegation(_pd_for_iaid(advertise, client["iaid"]))
+    _assert_configured_delegation(pd_offer)
+    reply = _request_advertised(
+        client,
+        server_duid,
+        [pd_offer],
+        ia_na_option=_ia_na_for_binding(
+            address_offer["iaid"],
+            address_offer["address"],
+            address_offer["preferred"],
+            address_offer["valid"],
+        ),
+    )
+    address = _address_from_ia_na(_ia_na_for_iaid(reply, address_iaid))
+    delegation = _binding_from_reply(
+        reply, client["iaid"], pd_offer["network"]
+    )
+    _track_binding(
+        {
+            "client": client,
+            "server_duid": server_duid,
+            "delegation": delegation,
+        }
+    )
+    return {
+        "client": client,
+        "server_duid": server_duid,
+        "address": address,
+        "delegation": delegation,
+    }
+
+
+def _combined_options(binding):
+    address = binding["address"]
+    delegation = binding["delegation"]
+    return [
+        _ia_na_for_binding(
+            address["iaid"],
+            address["address"],
+            address["preferred"],
+            address["valid"],
+        ),
+        _ia_pd(
+            delegation["iaid"],
+            prefixes=[
+                _ia_prefix(
+                    delegation["network"],
+                    delegation["network"].prefixlen,
+                    delegation["preferred"],
+                    delegation["valid"],
+                )
+            ],
+        ),
+    ]
+
+
+@given("two DHCPv6 clients each hold an address and delegated prefix")
+def step_given_two_combined_bindings(context):
+    victim = _fresh_client(iaid=0x10000001)
+    attacker = _fresh_client(iaid=0x20000001)
+    assert not _duids_equal(victim["duid"], attacker["duid"])
+    context_storage_v6["mixed_rebind_victim"] = _complete_combined_binding(victim)
+    context_storage_v6["mixed_rebind_attacker"] = _complete_combined_binding(attacker)
+
+
+@when("one client REBINDs its resources together with the other client's resources")
+def step_when_mixed_owned_and_forged_rebind(context):
+    attacker = context_storage_v6["mixed_rebind_attacker"]
+    victim = context_storage_v6["mixed_rebind_victim"]
+    _, reply = _send_message(
+        "DHCP6_Rebind",
+        "DHCP6_Reply",
+        attacker["client"],
+        _combined_options(attacker) + _combined_options(victim),
+    )
+    context_storage_v6["mixed_rebind_reply"] = reply
+
+
+@then("the mixed REBIND reply preserves only the attacker's owned resources")
+def step_then_mixed_rebind_excludes_victim(context):
+    reply = context_storage_v6["mixed_rebind_reply"]
+    attacker = context_storage_v6["mixed_rebind_attacker"]
+    victim = context_storage_v6["mixed_rebind_victim"]
+    returned_addresses = {
+        option.addr
+        for option in _nested_options(reply, _cls("DHCP6OptIAAddress"))
+        if int(getattr(option, "validlft", 0)) > 0
+    }
+    returned_prefixes = {
+        ipaddress.ip_network(f"{option.prefix}/{option.plen}", strict=False)
+        for option in _nested_options(reply, _cls("DHCP6OptIAPrefix"))
+        if int(getattr(option, "validlft", 0)) > 0
+    }
+    assert attacker["address"]["address"] in returned_addresses
+    assert attacker["delegation"]["network"] in returned_prefixes
+    assert victim["address"]["address"] not in returned_addresses, (
+        "Mixed REBIND returned another client's active IA_NA address"
+    )
+    assert victim["delegation"]["network"] not in returned_prefixes, (
+        "Mixed REBIND returned another client's active IA_PD prefix"
+    )
+
+
+@then("both original clients can renew their address and prefix bindings")
+def step_then_both_combined_bindings_renew(context):
+    for label in ("mixed_rebind_attacker", "mixed_rebind_victim"):
+        binding = context_storage_v6[label]
+        _, reply = _send_message(
+            "DHCP6_Renew",
+            "DHCP6_Reply",
+            binding["client"],
+            _combined_options(binding),
+            server_duid=binding["server_duid"],
+        )
+        address = _address_from_ia_na(
+            _ia_na_for_iaid(reply, binding["address"]["iaid"])
+        )
+        delegation = _binding_from_reply(
+            reply,
+            binding["delegation"]["iaid"],
+            binding["delegation"]["network"],
+        )
+        assert address["address"] == binding["address"]["address"]
+        assert delegation["network"] == binding["delegation"]["network"]

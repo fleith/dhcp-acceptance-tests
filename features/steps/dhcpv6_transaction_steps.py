@@ -1,8 +1,11 @@
 """RFC 9915 DHCPv6 validation, Rapid Commit, and retransmission steps."""
 
+import os
+import shlex
+import subprocess
 import time
 
-from behave import then, when
+from behave import given, then, when
 
 from dhcpv6_support import (
     INTERFACE,
@@ -24,6 +27,49 @@ from dhcpv6_support import (
     sendp,
     start_v6_sniffer as _start_v6_sniffer,
 )
+
+
+def _request_counter():
+    command = os.getenv("TEST_DHCPV6_REQUEST_COUNTER_COMMAND", "").strip()
+    assert command, (
+        "TEST_DHCPV6_REQUEST_COUNTER_COMMAND is required when the "
+        "dhcpv6_request_observability capability is enabled"
+    )
+    request = context_storage_v6.get("request_packet")
+    assert request is not None, "No completed DHCPv6 REQUEST is available"
+    env = os.environ.copy()
+    env.update(
+        {
+            "TEST_DHCPV6_REQUEST_TRID": str(context_storage_v6["request_trid"]),
+            "TEST_DHCPV6_REQUEST_DUID_HEX": bytes(_client_duid()).hex(),
+            "TEST_DHCPV6_REQUEST_PACKET_HEX": bytes(
+                request.getlayer(_cls("DHCP6_Request"))
+            ).hex(),
+        }
+    )
+    result = subprocess.run(
+        shlex.split(command),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    assert result.returncode == 0, (
+        "DHCPv6 REQUEST counter adapter failed with exit "
+        f"{result.returncode}: stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    output = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    assert output, "DHCPv6 REQUEST counter adapter returned no count"
+    try:
+        value = int(output[-1], 10)
+    except ValueError as error:
+        raise AssertionError(
+            "DHCPv6 REQUEST counter adapter must print a decimal integer as its "
+            f"last nonempty line; received {output[-1]!r}"
+        ) from error
+    assert value >= 0, f"DHCPv6 REQUEST counter cannot be negative: {value}"
+    return value
 
 
 def _client_message(message_name, trid, options):
@@ -222,6 +268,11 @@ def step_retransmit_identical_request(context):
     context_storage_v6["retransmit_request_sniffer"] = sniffer
 
 
+@given("the service REQUEST-processing counter is recorded")
+def step_record_request_processing_counter(context):
+    context_storage_v6["request_counter_before"] = _request_counter()
+
+
 @then("the retransmitted REQUEST returns the same binding and identifiers")
 def step_assert_retransmitted_request(context):
     trid = context_storage_v6["request_trid"]
@@ -241,6 +292,16 @@ def step_assert_retransmitted_request(context):
     )
     assert _duids_equal(_get_server_duid(reply), context_storage_v6["server_duid"]), (
         "Retransmitted REQUEST REPLY changed the Server Identifier"
+    )
+
+
+@then("the service REQUEST-processing counter advances by one")
+def step_assert_request_processing_counter(context):
+    before = context_storage_v6["request_counter_before"]
+    after = _request_counter()
+    assert after == before + 1, (
+        "Identical DHCPv6 REQUEST was not regenerated exactly once: "
+        f"counter changed from {before} to {after}"
     )
 
 

@@ -80,6 +80,24 @@ class EnvironmentCapabilityTests(unittest.TestCase):
         self.assertEqual(len(skipped), 1)
         self.assertIn("kea/kea-stable", skipped[0])
 
+    def test_kea_reserved_iid_pool_divergence_skips_strict_scenario(self):
+        skipped = []
+        scenario = SimpleNamespace(
+            tags={"reference_reserved_iid_pool_divergence"},
+            effective_tags={"reference_reserved_iid_pool_divergence"},
+            skip=skipped.append,
+        )
+
+        with patch.dict(
+            os.environ,
+            {"TEST_SERVER_IMPL": "kea", "TEST_SERVER_VERSION": "kea-stable"},
+            clear=False,
+        ):
+            environment.before_scenario(SimpleNamespace(), scenario)
+
+        self.assertEqual(len(skipped), 1)
+        self.assertIn("kea/kea-stable", skipped[0])
+
     def test_reference_forged_rebind_divergence_skips_strict_scenario(self):
         skipped = []
         scenario = SimpleNamespace(
