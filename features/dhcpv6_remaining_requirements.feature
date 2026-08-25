@@ -11,6 +11,19 @@ Feature: Remaining DHCPv6 server requirements from RFC 9915
     When a client sends a DHCPv6 SOLICIT message
     Then the client receives a DHCPv6 ADVERTISE from the server
 
+  @orchestrated @rfc9915_reserved_iid_pool @negative @reference_reserved_iid_pool_divergence
+  Scenario: Allocator skips reserved IIDs that are present in configured pools
+    Given the DHCPv6 server is running
+    When distinct clients exhaust the reserved-IID boundary pools
+    Then every allocatable boundary address is committed exactly once
+    And no reserved boundary IID is assigned
+
+  @kea @orchestrated @known_divergence @non_compliance @rfc9915_reserved_iid_pool_divergence
+  Scenario: Kea allocates reserved IIDs from explicitly configured pools
+    Given the DHCPv6 server is running
+    When distinct clients exhaust the reserved-IID boundary pools
+    Then the reference allocator assigns a reserved boundary IID
+
   @rfc9915_address_generation @reference_predictable_iid_divergence
   Scenario: Default address allocation avoids a simple contiguous IID sequence
     Given the DHCPv6 server is running

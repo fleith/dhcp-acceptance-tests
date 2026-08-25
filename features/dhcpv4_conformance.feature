@@ -28,6 +28,16 @@ Feature: DHCPv4 transaction safety and configuration behavior
     And multiple DHCPv4 clients request that held address during the hold window
     Then the reference server reoffers the held address
 
+  @negative @offer_hold_boundary @capability @requires_offer_hold_expiry
+  Scenario: Offer hold protects concurrent contenders until its expiry boundary
+    Given the DHCP server is running
+    When one DHCPv4 client leaves an offered address unselected
+    And concurrent DHCPv4 contenders request the held address before expiry
+    Then no pre-expiry contender is offered the held address
+    When the configured offer hold expires and a new concurrent wave requests the address
+    Then exactly one post-expiry contender is offered the released candidate
+    And the winning contender commits the address without an active duplicate
+
   @concurrency
   Scenario: Concurrent clients receive independent bindings
     Given the DHCP server is running

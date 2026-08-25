@@ -75,3 +75,10 @@ Feature: DHCPv6 Prefix Delegation (RFC 9915)
     Given every configured delegated prefix is bound
     When an additional client solicits a delegated prefix
     Then the advertised IA_PD contains NoPrefixAvail and no prefix
+
+  @negative @rfc9915_mixed_rebind
+  Scenario: Mixed REBIND cannot combine owned and forged IA_NA or IA_PD resources
+    Given two DHCPv6 clients each hold an address and delegated prefix
+    When one client REBINDs its resources together with the other client's resources
+    Then the mixed REBIND reply preserves only the attacker's owned resources
+    And both original clients can renew their address and prefix bindings

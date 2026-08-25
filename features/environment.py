@@ -75,6 +75,7 @@ def before_scenario(context, scenario):
         },
         'kea_rfc4702_rcode_divergence': {('kea', '*')},
         'reference_predictable_iid_divergence': {('kea', '*')},
+        'reference_reserved_iid_pool_divergence': {('kea', '*')},
         'reference_forged_rebind_ownership_divergence': {
             ('isc', '*'), ('isc-dhcpd', '*'), ('kea', '*')
         },

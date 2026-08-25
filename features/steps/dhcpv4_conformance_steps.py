@@ -52,6 +52,12 @@ BATCH_DEADLINE = float(os.getenv("TEST_DHCPV4_BATCH_DEADLINE", "15"))
 OFFER_HOLD_SECONDS = float(
     os.getenv("TEST_DHCPV4_OFFER_HOLD_SECONDS", "0.75")
 )
+OFFER_HOLD_EXPIRY_SECONDS = float(
+    os.getenv("TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS", "0")
+)
+OFFER_HOLD_CONTENDERS = int(
+    os.getenv("TEST_DHCPV4_OFFER_HOLD_CONTENDERS", "4")
+)
 CHURN_CYCLES = int(os.getenv("TEST_DHCPV4_CHURN_CYCLES", "12"))
 FUZZ_CASES = int(os.getenv("TEST_DHCPV4_FUZZ_CASES", "24"))
 STATE_DIR = Path(os.getenv("TEST_STATE_DIR", "/app/test-state"))
@@ -442,6 +448,7 @@ def step_leave_offer_unselected(context):
     state = _state(context)
     state["held_discovery"] = discovery
     state["held_ip"] = offered.pop()
+    state["held_offer_started"] = time.monotonic()
 
 
 @when("multiple DHCPv4 clients request that held address during the hold window")
@@ -494,6 +501,117 @@ def step_original_client_selects_held_offer(context):
     lease = _request(state["held_discovery"])
     assert lease["ip"] == state["held_ip"]
     state["active"].append(lease)
+
+
+def _concurrent_offer_wave(held_ip):
+    assert 2 <= OFFER_HOLD_CONTENDERS <= 16, (
+        "TEST_DHCPV4_OFFER_HOLD_CONTENDERS must stay in the bounded range 2..16"
+    )
+    clients = [
+        {"mac": _new_mac(), "xid": _new_xid()}
+        for _ in range(OFFER_HOLD_CONTENDERS)
+    ]
+    for client in clients:
+        client["packet"] = build_client_packet(
+            client["mac"],
+            client["xid"],
+            _client_options("discover", requested=held_ip),
+        )
+    sniffer = start_dhcp_sniffer(INTERFACE, timeout=4)
+    for client in clients:
+        sendp(client["packet"], iface=INTERFACE, verbose=False)
+    sniffer.join()
+    captured = list(sniffer.results or [])
+    return [
+        {
+            "mac": client["mac"],
+            "xid": client["xid"],
+            "packet": client["packet"],
+            "offers": [
+                packet
+                for packet in captured
+                if _matches(packet, client["xid"], {2}, client["mac"])
+            ],
+        }
+        for client in clients
+    ]
+
+
+@when("concurrent DHCPv4 contenders request the held address before expiry")
+def step_pre_expiry_offer_wave(context):
+    assert 0.2 <= OFFER_HOLD_EXPIRY_SECONDS <= 30, (
+        "TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS must describe the configured "
+        "hold duration in the bounded range 0.2..30"
+    )
+    state = _state(context)
+    assert time.monotonic() - state["held_offer_started"] < OFFER_HOLD_EXPIRY_SECONDS, (
+        "Offer-hold fixture setup already crossed the configured expiry boundary"
+    )
+    state["pre_expiry_wave"] = _concurrent_offer_wave(state["held_ip"])
+
+
+@then("no pre-expiry contender is offered the held address")
+def step_no_pre_expiry_reoffer(context):
+    state = _state(context)
+    offered = {
+        packet[BOOTP].yiaddr
+        for contender in state["pre_expiry_wave"]
+        for packet in contender["offers"]
+    }
+    assert state["held_ip"] not in offered, (
+        f"Server re-offered {state['held_ip']} before the configured hold expired"
+    )
+
+
+@when("the configured offer hold expires and a new concurrent wave requests the address")
+def step_post_expiry_offer_wave(context):
+    state = _state(context)
+    remaining = OFFER_HOLD_EXPIRY_SECONDS - (
+        time.monotonic() - state["held_offer_started"]
+    )
+    if remaining > 0:
+        time.sleep(remaining)
+    time.sleep(0.15)
+    state["post_expiry_wave"] = _concurrent_offer_wave(state["held_ip"])
+
+
+@then("exactly one post-expiry contender is offered the released candidate")
+def step_exactly_one_post_expiry_offer(context):
+    state = _state(context)
+    winners = [
+        contender
+        for contender in state["post_expiry_wave"]
+        if state["held_ip"]
+        in {packet[BOOTP].yiaddr for packet in contender["offers"]}
+    ]
+    assert len(winners) == 1, (
+        f"Expected exactly one contender to receive expired offer {state['held_ip']}; "
+        f"observed {len(winners)}"
+    )
+    winner = winners[0]
+    winner["offers"] = [
+        packet
+        for packet in winner["offers"]
+        if packet[BOOTP].yiaddr == state["held_ip"]
+    ]
+    state["offer_hold_winner"] = winner
+
+
+@then("the winning contender commits the address without an active duplicate")
+def step_offer_hold_winner_commits(context):
+    state = _state(context)
+    lease = _request(state["offer_hold_winner"])
+    assert lease["ip"] == state["held_ip"]
+    state["active"].append(lease)
+    competing_offers = [
+        packet[BOOTP].yiaddr
+        for contender in state["post_expiry_wave"]
+        if contender is not state["offer_hold_winner"]
+        for packet in contender["offers"]
+    ]
+    assert state["held_ip"] not in competing_offers, (
+        f"Multiple contenders were offered expired candidate {state['held_ip']}"
+    )
 
 
 @when("multiple DHCPv4 clients acquire leases concurrently")
