@@ -26,6 +26,7 @@ needed before making a complete claim.
 | IPv4 observability | `bash ./run_ipv4_observability_tests.sh --server <server>` | DECLINE administrative evidence plus Kea addressless allocation or ISC live DDNS behavior |
 | DHCPv6 RFC 4704 | `bash ./run_dhcpv6_rfc4704_tests.sh [--server-version kea-lts\|kea-stable]` | Client FQDN wire/flag behavior plus authoritative AAAA timing, RELEASE cleanup, and expiry cleanup through Kea D2 |
 | DHCPv6 Interface-ID policy | `bash ./run_dhcpv6_interface_id_tests.sh [--server-version kea-lts\|kea-stable]` | Exact opaque Option 18 pool selection and lease commitment, non-exact denial, closest-client nested-relay scope, and byte preservation |
+| DHCPv6 authenticated Reconfigure | `TEST_RECONFIGURE_TRIGGER_COMMAND=<adapter> bash ./run_dhcpv6_reconfigure_tests.sh --compose-file <target-override>` | RKAP key negotiation, complete HMAC validation, opt-out, tamper/replay rejection, exact metadata, and post-trigger RENEW |
 | DHCPv6 Preference | `bash ./run_dhcpv6_preference_tests.sh --server <server>` | Configured nonzero RFC 9915 server Preference, complementing the zero-default required check |
 | DHCPv6 REBIND policy | `bash ./run_dhcpv6_rebind_policy_tests.sh --server <server>` | Documents the ISC/Kea omission of NoBinding with Rapid Commit disabled; strict target-service assertion remains available separately |
 | Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
@@ -125,13 +126,25 @@ reported as a pass.
 | `dhcpv6_rapid_commit` | DHCPv6 server configured to accept Rapid Commit; the bundled IPv6 reference fixtures enable it and expose the capability by default |
 | `dhcpv6_interface_id_policy` | DHCPv6 server with two pools guarded by exact closest-client Interface-ID matching; the bundled Kea runner supplies the policy and expected ranges |
 | `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP` |
-| `authenticated_reconfigure` | `TEST_RECONFIGURE_TRIGGER_COMMAND` and `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` |
+| `authenticated_reconfigure` | `TEST_RECONFIGURE_TRIGGER_COMMAND`; optionally `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` for a second product-specific validation |
 | `storage_fault` | `TEST_STORAGE_FAIL_COMMAND` and `TEST_STORAGE_RECOVER_COMMAND` for an external target; the bundled reference fixtures use `run_storage_fault_tests.sh` |
 
-Adapter commands execute inside the test-runner container. The authenticated
-Reconfigure validator receives `TEST_RECONFIGURE_PACKET_HEX_FILE`, pointing to
-the captured packet encoded as hexadecimal, and must exit non-zero if
-cryptographic authentication is invalid.
+Adapter commands execute inside the test-runner container. For every trigger,
+the Reconfigure adapter receives `TEST_RECONFIGURE_CLIENT_ACCEPTED`,
+`TEST_RECONFIGURE_CLIENT_DUID_HEX`, `TEST_RECONFIGURE_CLIENT_IPV6`,
+`TEST_RECONFIGURE_CLIENT_LINK_LOCAL`, `TEST_RECONFIGURE_SERVER_DUID_HEX`, and
+`TEST_RECONFIGURE_REQUESTED_MESSAGE`. It must target that binding and return
+success after the trigger request is accepted; the suite decides whether a
+packet should appear. The suite itself extracts the 128-bit RKAP key from the
+initial REPLY and validates the complete HMAC-MD5, identifiers, unicast
+destination, permitted options, and monotonically increasing replay value.
+If the optional external validator is supplied, it receives
+`TEST_RECONFIGURE_PACKET_HEX_FILE`, pointing to the captured link-layer packet
+encoded as hexadecimal, and must exit nonzero when its validation fails.
+
+Kea currently documents client Reconfigure as unsupported, so this profile is
+not advertised by the bundled reference fixtures and remains conditional until
+a target-service adapter runs it.
 
 The supplied malformed-input, load, churn, and soak tests are intentionally
 bounded, so their profile rows remain `partial`: broader per-message/per-option

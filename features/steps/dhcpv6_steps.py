@@ -67,7 +67,7 @@ def step_when_send_solicit(context):
         / _cls("DHCP6OptElapsedTime")(elapsedtime=0)
         / _ia_na(context_storage_v6.pop("solicit_ipv6_hint", None))
     )
-    if context_storage_v6.pop("include_reconfigure_accept", False):
+    if context_storage_v6.get("include_reconfigure_accept", False):
         solicit /= _cls("DHCP6OptReconfAccept")()
     if context_storage_v6.pop("request_preference", False):
         solicit /= _cls("DHCP6OptOptReq")(reqopts=[7])
@@ -131,6 +131,8 @@ def step_when_send_request(context):
             context_storage_v6.get("offered_valid_lifetime", 0),
         )
     )
+    if context_storage_v6.get("include_reconfigure_accept", False):
+        request /= _cls("DHCP6OptReconfAccept")()
 
     sniffer = _start_v6_sniffer(timeout=12)
     sendp(request, iface=INTERFACE, verbose=False)

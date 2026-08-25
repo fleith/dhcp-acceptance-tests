@@ -1,4 +1,4 @@
-@ipv6 @rfc9915_extended
+@ipv6 @rfc9915_extended @rfc9915_reconfigure
 Feature: DHCPv6 Reconfigure signaling and validation (RFC 9915)
   The fixture cannot trigger authenticated server-initiated Reconfigure, but it
   can verify client capability signaling and mandatory server-side discards.
