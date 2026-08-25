@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "docs" / "conformance-profile.json"
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 
 class ConformanceProfileTests(unittest.TestCase):
@@ -65,6 +66,16 @@ class ConformanceProfileTests(unittest.TestCase):
         }
         actual_ids = {row["id"] for row in self.profile["coverage"]}
         self.assertTrue(required_ids <= actual_ids)
+
+    def test_reserved_iid_profile_runs_on_supported_kea_versions(self):
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        start = workflow.index("  dhcpv6-reserved-iid-pools:")
+        end = workflow.index("\n  focused-robustness:", start)
+        job = workflow[start:end]
+        self.assertIn("run_dhcpv6_reserved_iid_tests.sh", job)
+        self.assertIn("server_version: kea-lts", job)
+        self.assertIn("server_version: kea-stable", job)
+        self.assertIn("docker-compose.ipv6-reserved-iid.yml down -v", job)
 
 
 if __name__ == "__main__":

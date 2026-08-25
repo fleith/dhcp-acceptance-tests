@@ -429,8 +429,9 @@ compatibility failures still fail their job.
 CI also runs bounded focused robustness, lifecycle/crash recovery,
 configuration-safety policy, pool exhaustion, RFC 2131 server ping-check,
 IPv4 administrative/addressless/DDNS observability, DHCPv6 RFC 4704 live-DDNS
-lifecycle checks, exact opaque DHCPv6 Interface-ID policy checks on Kea 3.0.3
-and 3.2.0, and validation of the coverage profile.
+lifecycle checks, exact opaque DHCPv6 Interface-ID policy checks, reserved-IID
+allocator-pool checks on Kea 3.0.3 and 3.2.0, and validation of the coverage
+profile.
 Other capability-gated scenarios remain deployment jobs: a target service must
 supply the advertised capability and its adapter configuration.
 
