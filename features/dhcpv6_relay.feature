@@ -1,4 +1,4 @@
-@ipv6 @rfc9915_extended
+@ipv6 @rfc9915_extended @rfc9915_relay
 Feature: DHCPv6 relay-forward and relay-reply handling (RFC 9915)
   A server should preserve relay metadata while assigning an address to a
   client whose messages arrive through a relay agent.

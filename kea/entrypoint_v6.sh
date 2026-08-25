@@ -19,12 +19,60 @@ DHCPV6_REBIND_TIMER="${DHCPV6_REBIND_TIMER:-105}"
 DHCPV6_PREFERRED_LIFETIME="${DHCPV6_PREFERRED_LIFETIME:-120}"
 DHCPV6_VALID_LIFETIME="${DHCPV6_VALID_LIFETIME:-120}"
 DHCPV6_RECLAIM_TIMER_WAIT="${DHCPV6_RECLAIM_TIMER_WAIT:-10}"
+DHCPV6_INTERFACE_ID_POLICY="${DHCPV6_INTERFACE_ID_POLICY:-0}"
+DHCPV6_INTERFACE_ID_A_HEX="${DHCPV6_INTERFACE_ID_A_HEX:-00ff706f72742d418000}"
+DHCPV6_INTERFACE_ID_B_HEX="${DHCPV6_INTERFACE_ID_B_HEX:-817669662d42007f}"
+DHCPV6_INTERFACE_ID_POOL_A="${DHCPV6_INTERFACE_ID_POOL_A:-fd00:29::100 - fd00:29::17f}"
+DHCPV6_INTERFACE_ID_POOL_B="${DHCPV6_INTERFACE_ID_POOL_B:-fd00:29::180 - fd00:29::1ff}"
 
 case "$DHCPV6_RAPID_COMMIT" in
     1) RAPID_COMMIT_JSON=true ;;
     0) RAPID_COMMIT_JSON=false ;;
     *)
         echo "[kea6] ERROR: DHCPV6_RAPID_COMMIT must be 0 or 1" >&2
+        exit 1
+        ;;
+esac
+
+validate_interface_id_hex() {
+    value="$1"
+    name="$2"
+    if ! printf '%s' "$value" | grep -Eq '^[0-9a-fA-F]+$' || [ $(( ${#value} % 2 )) -ne 0 ]; then
+        echo "[kea6] ERROR: $name must contain an even number of hexadecimal digits" >&2
+        exit 1
+    fi
+}
+
+CLIENT_CLASSES_JSON='[]'
+POOLS_JSON='[ { "pool": "'"$DHCPV6_POOL"'" } ]'
+case "$DHCPV6_INTERFACE_ID_POLICY" in
+    0) ;;
+    1)
+        validate_interface_id_hex "$DHCPV6_INTERFACE_ID_A_HEX" DHCPV6_INTERFACE_ID_A_HEX
+        validate_interface_id_hex "$DHCPV6_INTERFACE_ID_B_HEX" DHCPV6_INTERFACE_ID_B_HEX
+        CLIENT_CLASSES_JSON='[
+      {
+        "name": "rfc9915-interface-a",
+        "test": "relay6[-1].option[18].hex == 0x'"$DHCPV6_INTERFACE_ID_A_HEX"'"
+      },
+      {
+        "name": "rfc9915-interface-b",
+        "test": "relay6[-1].option[18].hex == 0x'"$DHCPV6_INTERFACE_ID_B_HEX"'"
+      }
+    ]'
+        POOLS_JSON='[
+          {
+            "pool": "'"$DHCPV6_INTERFACE_ID_POOL_A"'",
+            "client-classes": [ "rfc9915-interface-a" ]
+          },
+          {
+            "pool": "'"$DHCPV6_INTERFACE_ID_POOL_B"'",
+            "client-classes": [ "rfc9915-interface-b" ]
+          }
+        ]'
+        ;;
+    *)
+        echo "[kea6] ERROR: DHCPV6_INTERFACE_ID_POLICY must be 0 or 1" >&2
         exit 1
         ;;
 esac
@@ -79,6 +127,7 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
     "interfaces-config": {
       "interfaces": [ "$IFACE" ]
     },
+    "client-classes": $CLIENT_CLASSES_JSON,
     "dhcp-ddns": {
       "enable-updates": true,
       "server-ip": "$DHCPV6_DDNS_MANAGER_IP",
@@ -109,7 +158,7 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
         "subnet": "$DHCPV6_SUBNET",
         "interface": "$IFACE",
         "rapid-commit": $RAPID_COMMIT_JSON,
-        "pools": [ { "pool": "$DHCPV6_POOL" } ],
+        "pools": $POOLS_JSON,
         "pd-pools": [
           {
             "prefix": "$DHCPV6_PD_PREFIX",
@@ -134,7 +183,7 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
 }
 CONF
 
-echo "[kea6] interface=$IFACE subnet=$DHCPV6_SUBNET pool=$DHCPV6_POOL pd=$DHCPV6_PD_PREFIX/$DHCPV6_PD_PREFIX_LEN->$DHCPV6_PD_DELEGATED_LEN link_local=$KEA_LL"
+echo "[kea6] interface=$IFACE subnet=$DHCPV6_SUBNET pool=$DHCPV6_POOL pd=$DHCPV6_PD_PREFIX/$DHCPV6_PD_PREFIX_LEN->$DHCPV6_PD_DELEGATED_LEN link_local=$KEA_LL interface_id_policy=$DHCPV6_INTERFACE_ID_POLICY"
 echo "[kea6] Generated /etc/kea/kea-dhcp6.conf:"
 cat /etc/kea/kea-dhcp6.conf
 

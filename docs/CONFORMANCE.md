@@ -25,6 +25,7 @@ needed before making a complete claim.
 | Server ping check | `bash ./run_ping_check_tests.sh --server <server>` | RFC 2131 candidate-address ICMP probing with silent and responding peers |
 | IPv4 observability | `bash ./run_ipv4_observability_tests.sh --server <server>` | DECLINE administrative evidence plus Kea addressless allocation or ISC live DDNS behavior |
 | DHCPv6 RFC 4704 | `bash ./run_dhcpv6_rfc4704_tests.sh [--server-version kea-lts\|kea-stable]` | Client FQDN wire/flag behavior plus authoritative AAAA timing, RELEASE cleanup, and expiry cleanup through Kea D2 |
+| DHCPv6 Interface-ID policy | `bash ./run_dhcpv6_interface_id_tests.sh [--server-version kea-lts\|kea-stable]` | Exact opaque Option 18 pool selection and lease commitment, non-exact denial, closest-client nested-relay scope, and byte preservation |
 | DHCPv6 Preference | `bash ./run_dhcpv6_preference_tests.sh --server <server>` | Configured nonzero RFC 9915 server Preference, complementing the zero-default required check |
 | DHCPv6 REBIND policy | `bash ./run_dhcpv6_rebind_policy_tests.sh --server <server>` | Documents the ISC/Kea omission of NoBinding with Rapid Commit disabled; strict target-service assertion remains available separately |
 | Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
@@ -99,6 +100,15 @@ ADVERTISE, publish only after REQUEST/REPLY, delete on RELEASE, and delete
 again when the short test lease is reclaimed after expiry. Ordinary IPv6 runs
 retain their normal lifetimes and do not depend on D2.
 
+The DHCPv6 Interface-ID policy runner configures two class-guarded address
+pools using full binary Option 18 equality at the relay closest to the client.
+The configured values deliberately differ in length and include zero and
+high-bit octets. Near matches, unknown values, and two separate Interface-ID
+options whose payloads only match when incorrectly concatenated must receive no
+address. Nested probes reverse the outer and inner values to prove that policy
+uses the closest-client relay while every RELAY-REPLY layer preserves its own
+opaque bytes through ADVERTISE and committed REPLY.
+
 ## Capability adapters
 
 Capabilities are skipped unless their name is present in the comma-separated
@@ -113,6 +123,7 @@ reported as a pass.
 | `dhcpv6_ddns` | `TEST_DNS_SERVER` plus a DHCPv6 server/D2 integration; the bundled Kea profile supplies D2, the authoritative observer, and short expiry timers |
 | `rfc4702_ascii_unsupported` | Target service configured without legacy ASCII Option 81 support; the scenario requires DORA to succeed while both responses ignore Client FQDN |
 | `dhcpv6_rapid_commit` | DHCPv6 server configured to accept Rapid Commit; the bundled IPv6 reference fixtures enable it and expose the capability by default |
+| `dhcpv6_interface_id_policy` | DHCPv6 server with two pools guarded by exact closest-client Interface-ID matching; the bundled Kea runner supplies the policy and expected ranges |
 | `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP` |
 | `authenticated_reconfigure` | `TEST_RECONFIGURE_TRIGGER_COMMAND` and `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` |
 | `storage_fault` | `TEST_STORAGE_FAIL_COMMAND` and `TEST_STORAGE_RECOVER_COMMAND` for an external target; the bundled reference fixtures use `run_storage_fault_tests.sh` |
