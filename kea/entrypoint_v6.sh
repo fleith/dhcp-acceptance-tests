@@ -43,14 +43,14 @@ validate_interface_id_hex() {
     fi
 }
 
-CLIENT_CLASSES_JSON='[]'
+CLIENT_CLASSES_OPTION=''
 POOLS_JSON='[ { "pool": "'"$DHCPV6_POOL"'" } ]'
 case "$DHCPV6_INTERFACE_ID_POLICY" in
     0) ;;
     1)
         validate_interface_id_hex "$DHCPV6_INTERFACE_ID_A_HEX" DHCPV6_INTERFACE_ID_A_HEX
         validate_interface_id_hex "$DHCPV6_INTERFACE_ID_B_HEX" DHCPV6_INTERFACE_ID_B_HEX
-        CLIENT_CLASSES_JSON='[
+        CLIENT_CLASSES_OPTION='"client-classes": [
       {
         "name": "rfc9915-interface-a",
         "test": "relay6[-1].option[18].hex == 0x'"$DHCPV6_INTERFACE_ID_A_HEX"'"
@@ -59,7 +59,7 @@ case "$DHCPV6_INTERFACE_ID_POLICY" in
         "name": "rfc9915-interface-b",
         "test": "relay6[-1].option[18].hex == 0x'"$DHCPV6_INTERFACE_ID_B_HEX"'"
       }
-    ]'
+    ],'
         POOLS_JSON='[
           {
             "pool": "'"$DHCPV6_INTERFACE_ID_POOL_A"'",
@@ -127,7 +127,7 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
     "interfaces-config": {
       "interfaces": [ "$IFACE" ]
     },
-    "client-classes": $CLIENT_CLASSES_JSON,
+    $CLIENT_CLASSES_OPTION
     "dhcp-ddns": {
       "enable-updates": true,
       "server-ip": "$DHCPV6_DDNS_MANAGER_IP",
