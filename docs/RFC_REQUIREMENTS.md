@@ -18,7 +18,7 @@ requirement. Product-specific applicability review is still required.
 
 | Requirements | Covered | Partial | Conditional | Gap | Excluded |
 |---:|---:|---:|---:|---:|---:|
-| 82 | 68 | 12 | 2 | 0 | 0 |
+| 82 | 69 | 11 | 2 | 0 | 0 |
 
 | RFC | Title | Requirements | Covered | Partial | Conditional | Gap | Excluded |
 |---:|---|---:|---:|---:|---:|---:|---:|
@@ -33,7 +33,7 @@ requirement. Product-specific applicability review is still required.
 | [4704](https://www.rfc-editor.org/rfc/rfc4704.html) | DHCPv6 Client FQDN Option | 6 | 6 | 0 | 0 | 0 | 0 |
 | [6842](https://www.rfc-editor.org/rfc/rfc6842.html) | Client Identifier Option in DHCP Server Replies | 2 | 2 | 0 | 0 | 0 | 0 |
 | [8925](https://www.rfc-editor.org/rfc/rfc8925.html) | IPv6-Only Preferred Option for DHCPv4 | 9 | 9 | 0 | 0 | 0 | 0 |
-| [9915](https://www.rfc-editor.org/rfc/rfc9915.html) | Dynamic Host Configuration Protocol for IPv6 | 27 | 19 | 7 | 1 | 0 | 0 |
+| [9915](https://www.rfc-editor.org/rfc/rfc9915.html) | Dynamic Host Configuration Protocol for IPv6 | 27 | 20 | 6 | 1 | 0 | 0 |
 
 ## RFC 2131: Dynamic Host Configuration Protocol
 
@@ -174,7 +174,7 @@ requirement. Product-specific applicability review is still required.
 | `RFC9915-19.3-MUST-01` | [19.3](https://www.rfc-editor.org/rfc/rfc9915.html#section-19.3) | MUST | **covered** | Return the response through the same relay agents that carried the original client message. | [A nested relay path is returned in reverse encapsulation order](../features/dhcpv6_relay.feature) |
 | `RFC9915-21.18-MUST-01` | [21.18](https://www.rfc-editor.org/rfc/rfc9915.html#section-21.18) | MUST | **covered** | Copy each Interface-ID from RELAY-FORWARD into the corresponding RELAY-REPLY layer. | [A nested relay path is returned in reverse encapsulation order](../features/dhcpv6_relay.feature) |
 | `RFC9915-21.18-MUST-NOT-01` | [21.18](https://www.rfc-editor.org/rfc/rfc9915.html#section-21.18) | MUST NOT | **partial** | Do not include Interface-ID in any message other than RELAY-FORWARD or RELAY-REPLY. | [Interface-ID is absent from direct DHCPv6 server messages](../features/dhcpv6_remaining_requirements.feature)<br>[Direct client Interface-ID cannot escape into a server response](../features/dhcpv6_remaining_requirements.feature)<br>[Interface-ID is absent across direct DHCPv6 lifecycle handlers](../features/dhcpv6_remaining_requirements.feature)<br>[Server does not advertise an address declined by an active client](../features/dhcpv6_decline.feature)<br>ADVERTISE and direct REPLY handlers for REQUEST RENEW REBIND CONFIRM INFORMATION-REQUEST RELEASE and DECLINE are checked, including hostile client input. Optional server-initiated Reconfigure remains capability-gated. |
-| `RFC9915-21.18-SHOULD-01` | [21.18](https://www.rfc-editor.org/rfc/rfc9915.html#section-21.18) | SHOULD | **partial** | Treat Interface-ID as an opaque value and base policy on exact matching rather than parsing it. | [A nested relay path is returned in reverse encapsulation order](../features/dhcpv6_relay.feature)<br>Exact byte preservation is covered; Interface-ID-based assignment policy is not. |
+| `RFC9915-21.18-SHOULD-01` | [21.18](https://www.rfc-editor.org/rfc/rfc9915.html#section-21.18) | SHOULD | **covered** | Treat Interface-ID as an opaque value and base policy on exact matching rather than parsing it. | [A nested relay path is returned in reverse encapsulation order](../features/dhcpv6_relay.feature)<br>[Exact opaque Interface-ID selects only its configured pool](../features/dhcpv6_rfc9915_interface_id_policy.feature)<br>[Near-match and split duplicate Interface-IDs cannot activate policy](../features/dhcpv6_rfc9915_interface_id_policy.feature)<br>[Closest-client Interface-ID controls nested relay policy](../features/dhcpv6_rfc9915_interface_id_policy.feature)<br>The isolated Kea profile compares the complete closest-client Interface-ID against different-length binary values containing zero and high-bit octets. Exact values select disjoint guarded pools; truncated, extended, bit-flipped, unknown, and split duplicate values receive no address; reversing nested relay values proves closest-client scope while both layers remain byte-exact. |
 | `RFC9915-21.21-MUST-01` | [21.21](https://www.rfc-editor.org/rfc/rfc9915.html#section-21.21) | MUST | **covered** | Ignore client-supplied IA_PD T1 and T2 values. | [Server ignores client-supplied IA_PD timers](../features/dhcpv6_prefix_delegation.feature) |
 
 ## Claim boundary

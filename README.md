@@ -92,6 +92,9 @@ bash ./run_ipv4_observability_tests.sh --server kea --server-version kea-stable
 # DHCPv6 RFC 4704 FQDN negotiation and live AAAA lifecycle through Kea D2
 bash ./run_dhcpv6_rfc4704_tests.sh
 
+# RFC 9915 exact opaque Interface-ID policy through single and nested relays
+bash ./run_dhcpv6_interface_id_tests.sh
+
 # Exhaust isolated lease storage, force-kill, and reconcile durable ACKs
 bash ./run_storage_fault_tests.sh --server isc-dhcpd
 bash ./run_storage_fault_tests.sh --server kea --server-version kea-stable
@@ -161,6 +164,9 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `DHCPV6_VALID_LIFETIME` | `120` | DHCPv6 valid lifetime; the isolated RFC 4704 expiry profile uses 12 seconds |
 | `TEST_RFC4704_DDNS_EXPIRY_TIMEOUT` | `30` | Maximum post-expiry wait for authoritative AAAA cleanup |
 | `TEST_DHCPV6_FORGED_OWNERSHIP_TIMEOUT` | `4` | Maximum seconds to observe a forged IA_NA REQUEST or REBIND response |
+| `DHCPV6_INTERFACE_ID_POLICY` | `0` | Enables the isolated Kea exact Interface-ID pool policy when set to `1` |
+| `DHCPV6_INTERFACE_ID_A_HEX` | `00ff706f72742d418000` | Complete opaque binary Interface-ID assigned to policy pool A |
+| `DHCPV6_INTERFACE_ID_B_HEX` | `817669662d42007f` | Different-length opaque binary Interface-ID assigned to policy pool B |
 | `TEST_CLIENT_MAC` | `02:00:00:00:00:01` | Fallback DHCPv4 client MAC |
 | `TEST_RESULTS_DIR` | `/app/test-results/default` | JUnit report directory inside the test runner |
 | `DHCPV4_POOL_START_OFFSET` | `100` | First /24 host offset in the primary DHCPv4 pool |
@@ -227,7 +233,7 @@ RFC 4361, RFC 4704, and RFC 8925.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation with strict DNS-wire decoding, complete configured suffixes, legal flag negotiation, nonzero MBZ input clearing, and exact name stability through RENEW. An isolated Kea D2 profile proves that AAAA publication waits for REQUEST/REPLY and that server-created records are deleted after RELEASE and short-lease reclamation. ISC runs only the universal omission checks in this fixture; a tagged, default-excluded divergence documents Kea 2.2 returning FQDN without an ORO request.
 - **RFC 6842**: client-identifier based lease stability across hardware-address changes, byte-for-byte response echo when supplied, and response omission when absent. ISC DHCP 4.4.1's legacy reply omission is recorded as a backend-specific divergence.
 - **RFC 8925**: requested IPv6-mostly scope delivery, configured and zero-default timer encoding, addressless and addressful server strategies, addressful fallback completion, request-list stability, omission on an independently selected non-IPv6-mostly relay pool, Rapid Commit suppression, and an isolated Kea 3.2 proof that an addressless response neither probes nor consumes any bounded-pool candidate.
-- **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation and exclusion from direct messages, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. Reply validation now checks exact identifiers for CONFIRM, RENEW, and INFORMATION-REQUEST, plus equal IA_NA/IA_PD renewal timers. The strict ownership tests reject forged IA_NA REQUEST and REBIND claims, while explicit divergence scenarios record that ISC DHCP and Kea reassign the active address during forged REBIND. Rapid Commit-enabled and disabled policy paths are both executable; the references' disabled-policy omission of `NoBinding` is also recorded. Representative reserved-IID hints and a bounded allocation sample cover address-generation edges without claiming exhaustive unpredictability. Authenticated server-initiated Reconfigure remains outside the fixture's claims.
+- **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation and exclusion from direct messages, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. An isolated Kea profile now guards two pools with complete opaque Interface-ID byte strings containing zero and high-bit octets; exact A/B values, truncated/extended/bit-flipped/unknown values, split duplicate options, and both nested relay orders prove exact matching and closest-client relay scope through both offer and lease commitment. Reply validation checks exact identifiers for CONFIRM, RENEW, and INFORMATION-REQUEST, plus equal IA_NA/IA_PD renewal timers. The strict ownership tests reject forged IA_NA REQUEST and REBIND claims, while explicit divergence scenarios record that ISC DHCP and Kea reassign the active address during forged REBIND. Rapid Commit-enabled and disabled policy paths are both executable; the references' disabled-policy omission of `NoBinding` is also recorded. Representative reserved-IID hints and a bounded allocation sample cover address-generation edges without claiming exhaustive unpredictability. Authenticated server-initiated Reconfigure remains outside the fixture's claims.
 
 Additional coverage is intentionally excluded from the 12-RFC server count:
 
@@ -346,6 +352,7 @@ dhcp-acceptance-tests/
 |-- docker-compose.ipv6.yml
 |-- docker-compose.ddns.yml
 |-- docker-compose.ipv6-ddns.yml
+|-- docker-compose.ipv6-interface-id.yml
 |-- RFC_EXPANSION_PLAN.md
 |-- run_dhcp_tests.sh
 |-- run_lifecycle_tests.sh
@@ -353,6 +360,7 @@ dhcp-acceptance-tests/
 |-- run_ping_check_tests.sh
 |-- run_ipv4_observability_tests.sh
 |-- run_dhcpv6_rfc4704_tests.sh
+|-- run_dhcpv6_interface_id_tests.sh
 |-- run_tests.py
 |-- summarize_junit.py
 |-- tests/test_summarize_junit.py
@@ -376,7 +384,8 @@ compatibility failures still fail their job.
 CI also runs bounded focused robustness, lifecycle/crash recovery,
 configuration-safety policy, pool exhaustion, RFC 2131 server ping-check,
 IPv4 administrative/addressless/DDNS observability, DHCPv6 RFC 4704 live-DDNS
-lifecycle checks on Kea 3.0.3 and 3.2.0, and validation of the coverage profile.
+lifecycle checks, exact opaque DHCPv6 Interface-ID policy checks on Kea 3.0.3
+and 3.2.0, and validation of the coverage profile.
 Other capability-gated scenarios remain deployment jobs: a target service must
 supply the advertised capability and its adapter configuration.
 
