@@ -98,7 +98,10 @@ bash ./run_dhcpv6_interface_id_tests.sh
 # RFC 9915 allocator behavior with reserved IIDs inside configured pools
 bash ./run_dhcpv6_reserved_iid_tests.sh
 
-# Target-service REQUEST regeneration with a matching-event counter adapter
+# RFC 9915 REQUEST regeneration using bundled Kea matching-event evidence
+bash ./run_dhcpv6_request_regeneration_tests.sh
+
+# A target service can replace the matching-event counter adapter and topology
 TEST_DHCPV6_REQUEST_COUNTER_COMMAND=/app/adapter/request-count \
   bash ./run_dhcpv6_request_regeneration_tests.sh --compose-file docker-compose.target.yml
 
@@ -269,7 +272,7 @@ RFC 4361, RFC 4704, and RFC 8925.
 - **RFC 4704**: DHCPv6 Client FQDN negotiation with strict DNS-wire decoding, complete configured suffixes, legal flag negotiation, nonzero MBZ input clearing, and exact name stability through RENEW. An isolated Kea D2 profile proves that AAAA publication waits for REQUEST/REPLY and that server-created records are deleted after RELEASE and short-lease reclamation. ISC runs only the universal omission checks in this fixture; a tagged, default-excluded divergence documents Kea 2.2 returning FQDN without an ORO request.
 - **RFC 6842**: client-identifier based lease stability across hardware-address changes, byte-for-byte response echo when supplied, and response omission when absent. ISC DHCP 4.4.1's legacy reply omission is recorded as a backend-specific divergence.
 - **RFC 8925**: requested IPv6-mostly scope delivery, configured and zero-default timer encoding, addressless and addressful server strategies, addressful fallback completion, request-list stability, omission on an independently selected non-IPv6-mostly relay pool, Rapid Commit suppression, and an isolated Kea 3.2 proof that an addressless response neither probes nor consumes any bounded-pool candidate.
-- **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation and exclusion from direct messages, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. An isolated Kea profile guards two pools with complete opaque Interface-ID byte strings containing zero and high-bit octets; exact A/B values, truncated/extended/bit-flipped/unknown values, split duplicate options, and both nested relay orders prove exact matching and closest-client relay scope through both offer and lease commitment. Target-service profiles directly prove identical REQUEST regeneration through a server event counter and exercise generated addresses across two subnets, repeated persistent restarts, full-capacity collision checks, release, and exact reuse. Reply validation checks exact identifiers for CONFIRM, RENEW, and INFORMATION-REQUEST, plus equal IA_NA/IA_PD renewal timers. Mixed-ownership REBIND now combines valid and forged IA_NA and IA_PD resources and then revalidates both owners. The reserved-IID profile puts representative forbidden values inside actual allocator pools; Kea 3.2.0 allocates them and is recorded as a divergence. A target-service Reconfigure profile independently validates RKAP/HMAC, replay protection, opt-out behavior, metadata, and post-trigger RENEW. Address-generation sampling remains bounded rather than an exhaustive unpredictability proof, and authenticated Reconfigure remains capability-gated because the bundled references do not implement it.
+- **RFC 9915**: DHCPv6 lease acquisition, lifetime validation, RENEW, REBIND, RELEASE, DECLINE, stateless INFORMATION-REQUEST, IA_PD prefix delegation, CONFIRM status handling, relay-forward/relay-reply address assignment, hop-count boundaries, nested relay paths, Interface-ID preservation and exclusion from direct messages, Reconfigure-Accept signaling, and malformed or unauthorized message recovery. An isolated Kea profile guards two pools with complete opaque Interface-ID byte strings containing zero and high-bit octets; exact A/B values, truncated/extended/bit-flipped/unknown values, split duplicate options, and both nested relay orders prove exact matching and closest-client relay scope through both offer and lease commitment. Bundled Kea 3.0.3 and 3.2.0 profiles prove identical REQUEST regeneration with exact-client, exact-transaction lease allocation/reuse event deltas; target-service profiles can supply the same counter contract and also exercise generated addresses across two subnets, repeated persistent restarts, full-capacity collision checks, release, and exact reuse. Reply validation checks exact identifiers for CONFIRM, RENEW, and INFORMATION-REQUEST, plus equal IA_NA/IA_PD renewal timers. Mixed-ownership REBIND now combines valid and forged IA_NA and IA_PD resources and then revalidates both owners. The reserved-IID profile puts representative forbidden values inside actual allocator pools; Kea 3.2.0 allocates them and is recorded as a divergence. A target-service Reconfigure profile independently validates RKAP/HMAC, replay protection, opt-out behavior, metadata, and post-trigger RENEW. Address-generation sampling remains bounded rather than an exhaustive unpredictability proof, and authenticated Reconfigure remains capability-gated because the bundled references do not implement it.
 
 Additional coverage is intentionally excluded from the 12-RFC server count:
 
@@ -430,8 +433,8 @@ CI also runs bounded focused robustness, lifecycle/crash recovery,
 configuration-safety policy, pool exhaustion, RFC 2131 server ping-check,
 IPv4 administrative/addressless/DDNS observability, DHCPv6 RFC 4704 live-DDNS
 lifecycle checks, exact opaque DHCPv6 Interface-ID policy checks, reserved-IID
-allocator-pool checks on Kea 3.0.3 and 3.2.0, and validation of the coverage
-profile.
+allocator-pool checks, exact-transaction DHCPv6 REQUEST regeneration on Kea
+3.0.3 and 3.2.0, and validation of the coverage profile.
 Other capability-gated scenarios remain deployment jobs: a target service must
 supply the advertised capability and its adapter configuration.
 

@@ -282,7 +282,7 @@ jobs:
           retention-days: 14
 
   dhcpv6-reserved-iid-pools:
-    name: DHCPv6 reserved-IID pools / ${{ matrix.name }}
+    name: DHCPv6 focused RFC 9915 / ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -297,31 +297,35 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Verify allocator behavior with reserved IIDs inside pools
-        id: reserved-iid-tests
-        run: >-
-          bash ./run_dhcpv6_reserved_iid_tests.sh
-          --server-version ${{ matrix.server_version }}
+      - name: Verify reserved-IID allocation and REQUEST regeneration
+        id: focused-rfc9915-tests
+        run: |
+          bash ./run_dhcpv6_reserved_iid_tests.sh \
+            --server-version ${{ matrix.server_version }}
+          bash ./run_dhcpv6_request_regeneration_tests.sh \
+            --server-version ${{ matrix.server_version }}
 
-      - name: Tear down DHCPv6 reserved-IID fixtures
+      - name: Tear down focused DHCPv6 RFC 9915 fixtures
         if: always()
-        run: >-
-          docker compose -f docker-compose.yml -f docker-compose.kea.yml
-          -f docker-compose.ipv6.yml -f docker-compose.ipv6-reserved-iid.yml down -v
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.kea.yml \
+            -f docker-compose.ipv6.yml -f docker-compose.ipv6-reserved-iid.yml down -v
+          docker compose -f docker-compose.yml -f docker-compose.kea.yml \
+            -f docker-compose.ipv6.yml -f docker-compose.ipv6-request-observability.yml down -v
 
-      - name: Publish DHCPv6 reserved-IID summary
+      - name: Publish focused DHCPv6 RFC 9915 summary
         if: always()
         run: >-
           python3 summarize_junit.py
           --results test-results
-          --title "DHCPv6 reserved-IID pools / ${{ matrix.name }}"
-          --run-outcome "${{ steps.reserved-iid-tests.outcome }}"
+          --title "DHCPv6 focused RFC 9915 / ${{ matrix.name }}"
+          --run-outcome "${{ steps.focused-rfc9915-tests.outcome }}"
 
-      - name: Upload DHCPv6 reserved-IID JUnit reports
+      - name: Upload focused DHCPv6 RFC 9915 JUnit reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dhcpv6-reserved-iid-${{ matrix.server_version }}-${{ github.run_attempt }}
+          name: dhcpv6-focused-rfc9915-${{ matrix.server_version }}-${{ github.run_attempt }}
           path: test-results
           if-no-files-found: warn
           retention-days: 14

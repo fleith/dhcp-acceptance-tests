@@ -73,9 +73,11 @@ class ConformanceProfileTests(unittest.TestCase):
         end = workflow.index("\n  focused-robustness:", start)
         job = workflow[start:end]
         self.assertIn("run_dhcpv6_reserved_iid_tests.sh", job)
+        self.assertIn("run_dhcpv6_request_regeneration_tests.sh", job)
         self.assertIn("server_version: kea-lts", job)
         self.assertIn("server_version: kea-stable", job)
         self.assertIn("docker-compose.ipv6-reserved-iid.yml down -v", job)
+        self.assertIn("docker-compose.ipv6-request-observability.yml down -v", job)
 
 
 if __name__ == "__main__":
