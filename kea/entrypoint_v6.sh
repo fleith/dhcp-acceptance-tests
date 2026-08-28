@@ -25,6 +25,9 @@ DHCPV6_INTERFACE_ID_B_HEX="${DHCPV6_INTERFACE_ID_B_HEX:-817669662d42007f}"
 DHCPV6_INTERFACE_ID_POOL_A="${DHCPV6_INTERFACE_ID_POOL_A:-fd00:29::100 - fd00:29::17f}"
 DHCPV6_INTERFACE_ID_POOL_B="${DHCPV6_INTERFACE_ID_POOL_B:-fd00:29::180 - fd00:29::1ff}"
 DHCPV6_POOLS_JSON="${DHCPV6_POOLS_JSON:-}"
+DHCPV6_SERVER_LOG_FILE="${DHCPV6_SERVER_LOG_FILE:-}"
+DHCPV6_LOG_SEVERITY="${DHCPV6_LOG_SEVERITY:-INFO}"
+DHCPV6_LOG_DEBUGLEVEL="${DHCPV6_LOG_DEBUGLEVEL:-0}"
 
 case "$DHCPV6_RAPID_COMMIT" in
     1) RAPID_COMMIT_JSON=true ;;
@@ -85,6 +88,13 @@ PREFERENCE_OPTION=""
 if [ -n "$DHCPV6_PREFERENCE" ]; then
     PREFERENCE_OPTION=',
           { "name": "preference", "data": "'"$DHCPV6_PREFERENCE"'" }'
+fi
+
+LOGGER_OUTPUT_OPTIONS='[ { "output": "stdout" } ]'
+if [ -n "$DHCPV6_SERVER_LOG_FILE" ]; then
+    mkdir -p "$(dirname "$DHCPV6_SERVER_LOG_FILE")"
+    : > "$DHCPV6_SERVER_LOG_FILE"
+    LOGGER_OUTPUT_OPTIONS='[ { "output": "stdout" }, { "output": "'"$DHCPV6_SERVER_LOG_FILE"'", "flush": true } ]'
 fi
 
 if ! ip -6 addr show "$IFACE" | grep -q "scope global"; then
@@ -179,8 +189,9 @@ cat > /etc/kea/kea-dhcp6.conf << CONF
     "loggers": [
       {
         "name": "kea-dhcp6",
-        "output_options": [ { "output": "stdout" } ],
-        "severity": "INFO"
+        "output_options": $LOGGER_OUTPUT_OPTIONS,
+        "severity": "$DHCPV6_LOG_SEVERITY",
+        "debuglevel": $DHCPV6_LOG_DEBUGLEVEL
       }
     ]
   }

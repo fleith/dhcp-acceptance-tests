@@ -1,0 +1,12 @@
+services:
+  dhcp-server:
+    environment:
+      DHCPV6_SERVER_LOG_FILE: /var/log/kea/dhcpv6-server.log
+      DHCPV6_LOG_SEVERITY: INFO
+      DHCPV6_LOG_DEBUGLEVEL: 0
+
+  test-runner:
+    environment:
+      TEST_CAPABILITIES: ${TEST_CAPABILITIES:-dhcpv6_request_observability}
+      TEST_DHCPV6_REQUEST_COUNTER_COMMAND: >-
+        ${TEST_DHCPV6_REQUEST_COUNTER_COMMAND:-python3 /app/adapters/kea_dhcpv6_request_counter.py}

@@ -28,10 +28,12 @@
     {
       "id": "GAP-DHCPV6-REQUEST-REGENERATION",
       "title": "Direct proof that retransmitted DHCPv6 REQUEST responses are regenerated",
-      "status": "conditional",
-      "mode": "capability",
+      "status": "covered",
+      "mode": "focused",
       "evidence": [
         "features/dhcpv6_request_regeneration.feature",
+        "adapters/kea_dhcpv6_request_counter.py",
+        "docker-compose.ipv6-request-observability.yml",
         "run_dhcpv6_request_regeneration_tests.sh"
       ],
       "tags": ["@requires_dhcpv6_request_observability", "@rfc9915_request_regeneration"]

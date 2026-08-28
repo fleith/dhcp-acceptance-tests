@@ -7,7 +7,8 @@ the results.
 
 The machine-readable coverage index is
 [`conformance-profile.json`](conformance-profile.json). `covered` means that a
-test is supplied and runs against the reference ISC DHCP and Kea fixtures.
+test is supplied and runs against its applicable bundled reference fixture(s),
+with backend-specific scope stated in the evidence.
 `conditional` means that the test is supplied but requires a service-specific
 adapter or topology. `partial` means that more requirements analysis is still
 needed before making a complete claim.
@@ -30,7 +31,7 @@ needed before making a complete claim.
 | DHCPv6 Preference | `bash ./run_dhcpv6_preference_tests.sh --server <server>` | Configured nonzero RFC 9915 server Preference, complementing the zero-default required check |
 | DHCPv6 REBIND policy | `bash ./run_dhcpv6_rebind_policy_tests.sh --server <server>` | Documents the ISC/Kea omission of NoBinding with Rapid Commit disabled; strict target-service assertion remains available separately |
 | DHCPv6 reserved-IID pools | `bash ./run_dhcpv6_reserved_iid_tests.sh` | Exhausts pools containing representative RFC-reserved IIDs and records Kea's reference divergence |
-| DHCPv6 REQUEST regeneration | `TEST_DHCPV6_REQUEST_COUNTER_COMMAND=<adapter> bash ./run_dhcpv6_request_regeneration_tests.sh --compose-file <target-override>` | Combines identical wire retransmission with an exact server-side REQUEST event delta |
+| DHCPv6 REQUEST regeneration | `bash ./run_dhcpv6_request_regeneration_tests.sh [--server-version kea-lts\|kea-stable]` | Bundled Kea adapter combines identical wire retransmission with exact-DUID, exact-transaction lease allocation/reuse event deltas; targets may replace the adapter and topology |
 | DHCPv6 generation lifecycle | Supply the generation topology variables and run `bash ./run_dhcpv6_generation_lifecycle_tests.sh --compose-file <target-override>` | Two-subnet uniqueness, repeated persistent restarts, collision avoidance, exhaustion, release, and reuse |
 | DHCPv4 offer-hold boundary | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS=<seconds> bash ./run_offer_hold_boundary_tests.sh --compose-file <target-override>` | Concurrent contender waves immediately before and after the configured expiry boundary |
 | Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
