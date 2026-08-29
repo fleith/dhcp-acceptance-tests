@@ -1,5 +1,6 @@
 """DHCPv6 Prefix Delegation acceptance steps for RFC 9915."""
 
+from collections import Counter
 import ipaddress
 import os
 
@@ -1213,27 +1214,130 @@ def _complete_combined_binding(client):
 
 
 def _combined_options(binding):
-    address = binding["address"]
-    delegation = binding["delegation"]
-    return [
-        _ia_na_for_binding(
-            address["iaid"],
-            address["address"],
-            address["preferred"],
-            address["valid"],
-        ),
-        _ia_pd(
-            delegation["iaid"],
-            prefixes=[
-                _ia_prefix(
-                    delegation["network"],
-                    delegation["network"].prefixlen,
-                    delegation["preferred"],
-                    delegation["valid"],
+    return _binding_options(binding, ("address", "prefix"))
+
+
+def _binding_options(binding, resource_kinds):
+    options = []
+    if "address" in resource_kinds:
+        address = binding["address"]
+        options.append(
+            _ia_na_for_binding(
+                address["iaid"],
+                address["address"],
+                address["preferred"],
+                address["valid"],
+            )
+        )
+    if "prefix" in resource_kinds:
+        delegation = binding["delegation"]
+        options.append(
+            _ia_pd(
+                delegation["iaid"],
+                prefixes=[
+                    _ia_prefix(
+                        delegation["network"],
+                        delegation["network"].prefixlen,
+                        delegation["preferred"],
+                        delegation["valid"],
+                    )
+                ],
+            )
+        )
+    return options
+
+
+_MIXED_REBIND_SHAPES = {
+    "address-only": (("address",), ("address",)),
+    "prefix-only": (("prefix",), ("prefix",)),
+    "address-with-forged-prefix": (("address",), ("prefix",)),
+    "prefix-with-forged-address": (("prefix",), ("address",)),
+    "fully-mixed": (("address", "prefix"), ("address", "prefix")),
+}
+
+
+def _expected_resource_counters(binding, resource_kinds):
+    addresses = Counter()
+    prefixes = Counter()
+    if "address" in resource_kinds:
+        address = binding["address"]
+        addresses[(address["iaid"], ipaddress.ip_address(address["address"]))] += 1
+    if "prefix" in resource_kinds:
+        delegation = binding["delegation"]
+        prefixes[(delegation["iaid"], delegation["network"])] += 1
+    return addresses, prefixes
+
+
+def _returned_resource_counters(reply):
+    addresses = []
+    for ia_na in _nested_options(reply, _cls("DHCP6OptIA_NA")):
+        for option in (getattr(ia_na, "ianaopts", None) or []):
+            if not isinstance(option, _cls("DHCP6OptIAAddress")):
+                continue
+            addresses.append(
+                (
+                    (int(ia_na.iaid), ipaddress.ip_address(option.addr)),
+                    int(option.validlft),
                 )
-            ],
-        ),
-    ]
+            )
+
+    prefixes = []
+    for ia_pd in _nested_options(reply, _cls("DHCP6OptIA_PD")):
+        for option in _encapsulated_options(ia_pd, _cls("DHCP6OptIAPrefix")):
+            network = ipaddress.ip_network(
+                f"{option.prefix}/{option.plen}", strict=False
+            )
+            prefixes.append(((int(ia_pd.iaid), network), int(option.validlft)))
+
+    return addresses, prefixes
+
+
+def _resource_lifetimes(records):
+    lifetimes = {}
+    for key, valid in records:
+        lifetimes.setdefault(key, []).append(valid)
+    return lifetimes
+
+
+def _positive_binding_options(reply):
+    options = []
+    for ia_na in _nested_options(reply, _cls("DHCP6OptIA_NA")):
+        addresses = [
+            _cls("DHCP6OptIAAddress")(
+                addr=option.addr,
+                preflft=int(option.preflft),
+                validlft=int(option.validlft),
+            )
+            for option in (getattr(ia_na, "ianaopts", None) or [])
+            if isinstance(option, _cls("DHCP6OptIAAddress"))
+            and int(option.validlft) > 0
+        ]
+        if addresses:
+            options.append(
+                _cls("DHCP6OptIA_NA")(
+                    iaid=int(ia_na.iaid),
+                    T1=0,
+                    T2=0,
+                    ianaopts=addresses,
+                )
+            )
+
+    for ia_pd in _nested_options(reply, _cls("DHCP6OptIA_PD")):
+        prefixes = [
+            _ia_prefix(
+                option.prefix,
+                int(option.plen),
+                int(option.preflft),
+                int(option.validlft),
+            )
+            for option in _encapsulated_options(
+                ia_pd, _cls("DHCP6OptIAPrefix")
+            )
+            if int(option.validlft) > 0
+        ]
+        if prefixes:
+            options.append(_ia_pd(int(ia_pd.iaid), prefixes=prefixes))
+    return options
 
 
 @given("two DHCPv6 clients each hold an address and delegated prefix")
@@ -1245,41 +1349,168 @@ def step_given_two_combined_bindings(context):
     context_storage_v6["mixed_rebind_attacker"] = _complete_combined_binding(attacker)
 
 
-@when("one client REBINDs its resources together with the other client's resources")
-def step_when_mixed_owned_and_forged_rebind(context):
+def _send_mixed_owned_and_forged_rebind(shape):
+    assert shape in _MIXED_REBIND_SHAPES, f"Unknown mixed REBIND shape {shape!r}"
     attacker = context_storage_v6["mixed_rebind_attacker"]
     victim = context_storage_v6["mixed_rebind_victim"]
+    owned_kinds, forged_kinds = _MIXED_REBIND_SHAPES[shape]
     _, reply = _send_message(
         "DHCP6_Rebind",
         "DHCP6_Reply",
         attacker["client"],
-        _combined_options(attacker) + _combined_options(victim),
+        _binding_options(attacker, owned_kinds)
+        + _binding_options(victim, forged_kinds),
     )
     context_storage_v6["mixed_rebind_reply"] = reply
+    context_storage_v6["mixed_rebind_shape"] = shape
 
 
-@then("the mixed REBIND reply preserves only the attacker's owned resources")
-def step_then_mixed_rebind_excludes_victim(context):
+@when('one client sends an "address-only" mixed-ownership REBIND')
+def step_when_address_only_rebind(context):
+    _send_mixed_owned_and_forged_rebind("address-only")
+
+
+@when('one client sends a "prefix-only" mixed-ownership REBIND')
+def step_when_prefix_only_rebind(context):
+    _send_mixed_owned_and_forged_rebind("prefix-only")
+
+
+@when('one client sends a "address-with-forged-prefix" mixed-ownership REBIND')
+def step_when_address_with_forged_prefix_rebind(context):
+    _send_mixed_owned_and_forged_rebind("address-with-forged-prefix")
+
+
+@when('one client sends a "prefix-with-forged-address" mixed-ownership REBIND')
+def step_when_prefix_with_forged_address_rebind(context):
+    _send_mixed_owned_and_forged_rebind("prefix-with-forged-address")
+
+
+@when('one client sends a "fully-mixed" mixed-ownership REBIND')
+def step_when_fully_mixed_rebind(context):
+    _send_mixed_owned_and_forged_rebind("fully-mixed")
+
+
+def _assert_mixed_rebind_reply(shape):
+    assert shape == context_storage_v6["mixed_rebind_shape"]
     reply = context_storage_v6["mixed_rebind_reply"]
     attacker = context_storage_v6["mixed_rebind_attacker"]
     victim = context_storage_v6["mixed_rebind_victim"]
-    returned_addresses = {
-        option.addr
-        for option in _nested_options(reply, _cls("DHCP6OptIAAddress"))
-        if int(getattr(option, "validlft", 0)) > 0
-    }
-    returned_prefixes = {
-        ipaddress.ip_network(f"{option.prefix}/{option.plen}", strict=False)
-        for option in _nested_options(reply, _cls("DHCP6OptIAPrefix"))
-        if int(getattr(option, "validlft", 0)) > 0
-    }
-    assert attacker["address"]["address"] in returned_addresses
-    assert attacker["delegation"]["network"] in returned_prefixes
-    assert victim["address"]["address"] not in returned_addresses, (
-        "Mixed REBIND returned another client's active IA_NA address"
+    owned_kinds, forged_kinds = _MIXED_REBIND_SHAPES[shape]
+    expected_addresses, expected_prefixes = _expected_resource_counters(
+        attacker, owned_kinds
     )
-    assert victim["delegation"]["network"] not in returned_prefixes, (
-        "Mixed REBIND returned another client's active IA_PD prefix"
+    forged_addresses, forged_prefixes = _expected_resource_counters(
+        victim, forged_kinds
+    )
+
+    returned_addresses, returned_prefixes = _returned_resource_counters(reply)
+    address_lifetimes = _resource_lifetimes(returned_addresses)
+    prefix_lifetimes = _resource_lifetimes(returned_prefixes)
+
+    for expected, lifetimes, label in (
+        (expected_addresses, address_lifetimes, "IA_NA"),
+        (expected_prefixes, prefix_lifetimes, "IA_PD"),
+    ):
+        for key in expected:
+            assert lifetimes.get(key) and len(lifetimes[key]) == 1, (
+                f"{shape} REBIND did not return owned {label} resource {key} "
+                "exactly once"
+            )
+            assert lifetimes[key][0] > 0, (
+                f"{shape} REBIND did not preserve owned {label} resource {key}"
+            )
+
+    for forged, lifetimes, label in (
+        (forged_addresses, address_lifetimes, "IA_NA"),
+        (forged_prefixes, prefix_lifetimes, "IA_PD"),
+    ):
+        for key in forged:
+            assert len(lifetimes.get(key, [])) <= 1, (
+                f"{shape} REBIND duplicated forged {label} resource {key}"
+            )
+            assert all(valid == 0 for valid in lifetimes.get(key, [])), (
+                f"{shape} REBIND activated another client's {label} resource {key}"
+            )
+
+    context_storage_v6["mixed_rebind_positive_options"] = (
+        _positive_binding_options(reply)
+    )
+    context_storage_v6["mixed_rebind_positive_addresses"] = Counter(
+        key for key, valid in returned_addresses if valid > 0
+    )
+    context_storage_v6["mixed_rebind_positive_prefixes"] = Counter(
+        key for key, valid in returned_prefixes if valid > 0
+    )
+
+
+@then(
+    'the "address-only" REBIND reply preserves owned resources and never '
+    "activates forged resources"
+)
+def step_then_address_only_rebind_excludes_victim(context):
+    _assert_mixed_rebind_reply("address-only")
+
+
+@then(
+    'the "prefix-only" REBIND reply preserves owned resources and never '
+    "activates forged resources"
+)
+def step_then_prefix_only_rebind_excludes_victim(context):
+    _assert_mixed_rebind_reply("prefix-only")
+
+
+@then(
+    'the "address-with-forged-prefix" REBIND reply preserves owned resources '
+    "and never activates forged resources"
+)
+def step_then_address_with_forged_prefix_excludes_victim(context):
+    _assert_mixed_rebind_reply("address-with-forged-prefix")
+
+
+@then(
+    'the "prefix-with-forged-address" REBIND reply preserves owned resources '
+    "and never activates forged resources"
+)
+def step_then_prefix_with_forged_address_excludes_victim(context):
+    _assert_mixed_rebind_reply("prefix-with-forged-address")
+
+
+@then(
+    'the "fully-mixed" REBIND reply preserves owned resources and never '
+    "activates forged resources"
+)
+def step_then_fully_mixed_rebind_excludes_victim(context):
+    _assert_mixed_rebind_reply("fully-mixed")
+
+
+@then("every positive mixed REBIND resource is renewable by the attacker")
+def step_then_positive_rebind_resources_belong_to_attacker(context):
+    attacker = context_storage_v6["mixed_rebind_attacker"]
+    options = context_storage_v6["mixed_rebind_positive_options"]
+    assert options, "Mixed REBIND returned no positive-lifetime resources"
+    _, reply = _send_message(
+        "DHCP6_Renew",
+        "DHCP6_Reply",
+        attacker["client"],
+        options,
+        server_duid=attacker["server_duid"],
+    )
+    returned_addresses, returned_prefixes = _returned_resource_counters(reply)
+    renewed_addresses = Counter(
+        key for key, valid in returned_addresses if valid > 0
+    )
+    renewed_prefixes = Counter(
+        key for key, valid in returned_prefixes if valid > 0
+    )
+    expected_addresses = context_storage_v6["mixed_rebind_positive_addresses"]
+    expected_prefixes = context_storage_v6["mixed_rebind_positive_prefixes"]
+    assert renewed_addresses == expected_addresses, (
+        "Attacker could not renew every positive IA_NA resource returned by REBIND; "
+        f"expected {expected_addresses}, received {renewed_addresses}"
+    )
+    assert renewed_prefixes == expected_prefixes, (
+        "Attacker could not renew every positive IA_PD resource returned by REBIND; "
+        f"expected {expected_prefixes}, received {renewed_prefixes}"
     )
 
 

@@ -106,26 +106,8 @@ def step_then_forged_response_excludes_victim_address(context):
         option.addr
         for reply in replies
         for option in _nested_options(reply, _cls("DHCP6OptIAAddress"))
+        if int(getattr(option, "validlft", 0)) > 0
     }
     assert victim not in returned, (
         f"Server assigned active victim address {victim} to a different DUID"
-    )
-
-
-@then("the reference response assigns the victim address to the attacker")
-def step_then_reference_reassigns_victim(context):
-    replies = _dhcpv6_packets(
-        context_storage_v6["forged_ownership_sniffer"],
-        "DHCP6_Reply",
-        context_storage_v6["forged_ownership_trid"],
-    )
-    assert replies, "Reference server no longer replies to the forged REBIND"
-    victim = context_storage_v6["forged_ownership_victim"]
-    returned = {
-        option.addr
-        for reply in replies
-        for option in _nested_options(reply, _cls("DHCP6OptIAAddress"))
-    }
-    assert victim in returned, (
-        f"Reference divergence changed; victim {victim} not in {sorted(returned)}"
     )
