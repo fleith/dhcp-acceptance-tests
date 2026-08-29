@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "docs" / "conformance-profile.json"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+RESERVED_IID_TOPOLOGY = ROOT / "docker-compose.ipv6-reserved-iid.yml"
 
 
 class ConformanceProfileTests(unittest.TestCase):
@@ -79,6 +80,36 @@ class ConformanceProfileTests(unittest.TestCase):
         self.assertIn("server_version: kea-stable", job)
         self.assertIn("docker-compose.ipv6-reserved-iid.yml down -v", job)
         self.assertIn("docker-compose.ipv6-request-observability.yml down -v", job)
+
+    def test_reserved_iid_topology_covers_registry_boundaries(self):
+        topology = RESERVED_IID_TOPOLOGY.read_text(encoding="utf-8").lower()
+        forbidden_start = topology.index("test_dhcpv6_reserved_pool_forbidden")
+        allowed_start = topology.index("test_dhcpv6_reserved_pool_allowed")
+        allowed = topology[allowed_start:forbidden_start]
+        forbidden = topology[forbidden_start:]
+        self.assertNotIn("200:5eff:fe00:5214", allowed)
+        for candidate in (
+            "fd00:29::",
+            "200:5eff:fe00:0",
+            "200:5eff:fe00:2909",
+            "200:5eff:fe00:5212",
+            "200:5eff:fe00:5213",
+            "200:5eff:fe00:5214",
+            "200:5eff:fe80:0",
+            "200:5eff:feff:ffff",
+            "fdff:ffff:ffff:ff80",
+            "fdff:ffff:ffff:ffbf",
+            "fdff:ffff:ffff:ffff",
+        ):
+            self.assertIn(candidate, forbidden)
+
+    def test_rfc_traceability_profile_is_complete(self):
+        traceability = next(
+            row
+            for row in self.profile["coverage"]
+            if row["id"] == "GAP-RFC-TRACEABILITY"
+        )
+        self.assertEqual(traceability["status"], "covered")
 
 
 if __name__ == "__main__":

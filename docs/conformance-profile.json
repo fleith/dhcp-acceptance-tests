@@ -230,7 +230,7 @@
     {
       "id": "GAP-RFC-TRACEABILITY",
       "title": "Requirement-level mapping of applicable RFC MUST and SHOULD statements",
-      "status": "partial",
+      "status": "covered",
       "mode": "documentation",
       "evidence": [
         "docs/CONFORMANCE.md",

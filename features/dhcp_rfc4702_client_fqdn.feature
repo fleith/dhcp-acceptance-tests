@@ -34,10 +34,12 @@ Feature: RFC 4702 Client FQDN Option (Option 81)
   @ipv4_partial_next @kea_rfc4702_rcode_divergence
   Scenario Outline: Server-sent Client FQDN options use the deprecated RCODE values
     Given the DHCP server is running
-    When a client completes a DORA exchange using <encoding> Client FQDN encoding
+    When a client completes a DORA exchange using <encoding> Client FQDN encoding with input RCODEs <rcode1> and <rcode2>
     Then every returned Client FQDN option sets RCODE1 and RCODE2 to 255
 
     Examples:
-      | encoding |
-      | DNS      |
-      | ASCII    |
+      | encoding | rcode1 | rcode2 |
+      | DNS      | 0      | 0      |
+      | DNS      | 1      | 254    |
+      | ASCII    | 0      | 0      |
+      | ASCII    | 254    | 1      |

@@ -41,6 +41,14 @@ class RfcRequirementsTests(unittest.TestCase):
     def test_all_claimed_rfcs_are_indexed(self):
         self.assertEqual({row["rfc"] for row in self.rows}, EXPECTED_RFCS)
 
+    def test_current_matrix_has_no_partial_or_gap_rows(self):
+        open_rows = [
+            row["requirement_id"]
+            for row in self.rows
+            if row["status"] in {"partial", "gap"}
+        ]
+        self.assertEqual(open_rows, [])
+
     def test_evidence_names_real_feature_scenarios(self):
         for row in self.rows:
             if row["status"] in {"covered", "partial", "conditional"}:

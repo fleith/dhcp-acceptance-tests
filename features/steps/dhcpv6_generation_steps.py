@@ -219,6 +219,37 @@ def _scope_bindings(bindings, relayed):
     return [binding for binding in bindings if binding["relayed"] is relayed]
 
 
+def _iid_sequence(bindings):
+    mask = (1 << 64) - 1
+    return [int(ipaddress.ip_address(binding["address"])) & mask for binding in bindings]
+
+
+def _stride_fingerprint(values):
+    return tuple(
+        (current - previous) % (1 << 64)
+        for previous, current in zip(values, values[1:])
+    )
+
+
+def _assert_resists_simple_predictors(values, label):
+    assert len(values) >= 4
+    sorted_values = sorted(values)
+    contiguous = all(
+        current == previous + 1
+        for previous, current in zip(sorted_values, sorted_values[1:])
+    )
+    fingerprint = _stride_fingerprint(values)
+    constant_stride = bool(fingerprint) and len(set(fingerprint)) == 1
+    monotonic = all(a < b for a, b in zip(values, values[1:])) or all(
+        a > b for a, b in zip(values, values[1:])
+    )
+    assert not contiguous, f"{label} produced a contiguous IID set: {values!r}"
+    assert not constant_stride, (
+        f"{label} produced a constant-stride IID sequence: {values!r}"
+    )
+    assert not monotonic, f"{label} produced a monotonic IID sequence: {values!r}"
+
+
 @given("the DHCPv6 generation lifecycle topology is configured")
 def step_generation_topology(context):
     require_scapy_v6()
@@ -262,6 +293,15 @@ def step_generation_sample_unique(context):
         assert address in expected, f"Generated address {address} is outside {expected}"
 
 
+@then("allocation-order IID samples resist simple predictors in both subnets")
+def step_generation_samples_resist_predictors(context):
+    bindings = context_storage_v6["generation_original"]
+    for relayed, label in ((False, "direct subnet"), (True, "relay subnet")):
+        _assert_resists_simple_predictors(
+            _iid_sequence(_scope_bindings(bindings, relayed)), label
+        )
+
+
 @when("the service adapter performs two persistent DHCPv6 restarts")
 def step_two_persistent_restarts(context):
     history = []
@@ -299,6 +339,19 @@ def step_no_restart_collision(context):
         f"{sorted(original.intersection(fresh))}"
     )
     assert len(fresh) == len(set(fresh))
+
+
+@then("post-restart allocation fingerprints do not repeat earlier samples")
+def step_post_restart_fingerprints_change(context):
+    original = context_storage_v6["generation_original"]
+    fresh = context_storage_v6["generation_fresh"]
+    for relayed, label in ((False, "direct subnet"), (True, "relay subnet")):
+        original_iids = _iid_sequence(_scope_bindings(original, relayed))
+        fresh_iids = _iid_sequence(_scope_bindings(fresh, relayed))
+        _assert_resists_simple_predictors(fresh_iids, f"post-restart {label}")
+        assert _stride_fingerprint(fresh_iids) != _stride_fingerprint(original_iids), (
+            f"Post-restart {label} repeated the original allocation fingerprint"
+        )
 
 
 @when("half of the original bindings are released in each subnet")

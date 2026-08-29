@@ -1,16 +1,31 @@
 services:
   dhcp-server:
     environment:
+      # IANA IPv6 Interface Identifiers registry snapshot reviewed 2026-08-29.
+      # Each reserved range has start/interior/end candidates and safe neighbors.
       DHCPV6_POOLS_JSON: >-
         [
-          { "pool": "fd00:29:: - fd00:29::1" },
-          { "pool": "fd00:29:0:0:200:5eff:fe00:5212 - fd00:29:0:0:200:5eff:fe00:5214" },
-          { "pool": "fd00:29:0:0:fdff:ffff:ffff:ff7f - fd00:29:0:0:fdff:ffff:ffff:ff81" }
+          { "pool": "fd00:29:: - fd00:29::" },
+          { "pool": "fd00:29::1 - fd00:29::1" },
+          { "pool": "fd00:29:0:0:200:5eff:fdff:ffff - fd00:29:0:0:200:5eff:fdff:ffff" },
+          { "pool": "fd00:29:0:0:200:5eff:fe00:0 - fd00:29:0:0:200:5eff:fe00:0" },
+          { "pool": "fd00:29:0:0:200:5eff:fe00:2909 - fd00:29:0:0:200:5eff:fe00:2909" },
+          { "pool": "fd00:29:0:0:200:5eff:fe00:5212 - fd00:29:0:0:200:5eff:fe00:5212" },
+          { "pool": "fd00:29:0:0:200:5eff:fe00:5213 - fd00:29:0:0:200:5eff:fe00:5213" },
+          { "pool": "fd00:29:0:0:200:5eff:fe00:5214 - fd00:29:0:0:200:5eff:fe00:5214" },
+          { "pool": "fd00:29:0:0:200:5eff:fe80:0 - fd00:29:0:0:200:5eff:fe80:0" },
+          { "pool": "fd00:29:0:0:200:5eff:feff:ffff - fd00:29:0:0:200:5eff:feff:ffff" },
+          { "pool": "fd00:29:0:0:200:5eff:ff00:0 - fd00:29:0:0:200:5eff:ff00:0" },
+          { "pool": "fd00:29:0:0:fdff:ffff:ffff:ff7f - fd00:29:0:0:fdff:ffff:ffff:ff7f" },
+          { "pool": "fd00:29:0:0:fdff:ffff:ffff:ff80 - fd00:29:0:0:fdff:ffff:ffff:ff80" },
+          { "pool": "fd00:29:0:0:fdff:ffff:ffff:ffbf - fd00:29:0:0:fdff:ffff:ffff:ffbf" },
+          { "pool": "fd00:29:0:0:fdff:ffff:ffff:ffff - fd00:29:0:0:fdff:ffff:ffff:ffff" },
+          { "pool": "fd00:29:0:0:fe00:: - fd00:29:0:0:fe00::" }
         ]
 
   test-runner:
     environment:
       TEST_DHCPV6_RESERVED_POOL_ALLOWED: >-
-        fd00:29::1,fd00:29:0:0:200:5eff:fe00:5214,fd00:29:0:0:fdff:ffff:ffff:ff7f
+        fd00:29::1,fd00:29:0:0:200:5eff:fdff:ffff,fd00:29:0:0:200:5eff:ff00:0,fd00:29:0:0:fdff:ffff:ffff:ff7f,fd00:29:0:0:fe00::
       TEST_DHCPV6_RESERVED_POOL_FORBIDDEN: >-
-        fd00:29::,fd00:29:0:0:200:5eff:fe00:5212,fd00:29:0:0:200:5eff:fe00:5213,fd00:29:0:0:fdff:ffff:ffff:ff80,fd00:29:0:0:fdff:ffff:ffff:ff81
+        fd00:29::,fd00:29:0:0:200:5eff:fe00:0,fd00:29:0:0:200:5eff:fe00:2909,fd00:29:0:0:200:5eff:fe00:5212,fd00:29:0:0:200:5eff:fe00:5213,fd00:29:0:0:200:5eff:fe00:5214,fd00:29:0:0:200:5eff:fe80:0,fd00:29:0:0:200:5eff:feff:ffff,fd00:29:0:0:fdff:ffff:ffff:ff80,fd00:29:0:0:fdff:ffff:ffff:ffbf,fd00:29:0:0:fdff:ffff:ffff:ffff
