@@ -570,6 +570,153 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  dhcpv4-capacity-smoke:
+    name: Large-pool capacity smoke / ${{ matrix.name }}
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ISC DHCP 4.4.3-P1
+            server: isc-dhcpd
+            server_version: isc-final
+          - name: Kea 3.2.0
+            server: kea
+            server_version: kea-stable
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Fill renew exhaust and recycle a 256-address pool
+        id: capacity-tests
+        run: >-
+          bash ./run_capacity_tests.sh
+          --server ${{ matrix.server }}
+          --server-version ${{ matrix.server_version }}
+          --profile smoke
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.capacity.yml down -v
+
+      - name: Publish capacity summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Large-pool capacity smoke / ${{ matrix.name }}"
+          --run-outcome "${{ steps.capacity-tests.outcome }}"
+
+      - name: Upload capacity reports and resource metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dhcpv4-capacity-smoke-${{ matrix.server_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
+  dhcpv4-capacity-scheduled:
+    name: Scheduled large-pool capacity / ${{ matrix.name }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ISC DHCP 4.4.3-P1
+            server: isc-dhcpd
+            server_version: isc-final
+          - name: Kea 3.2.0
+            server: kea
+            server_version: kea-stable
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Fill renew exhaust and recycle a 1024-address pool
+        id: capacity-tests
+        run: >-
+          bash ./run_capacity_tests.sh
+          --server ${{ matrix.server }}
+          --server-version ${{ matrix.server_version }}
+          --profile scheduled
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.capacity.yml down -v
+
+      - name: Publish scheduled capacity summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Scheduled large-pool capacity / ${{ matrix.name }}"
+          --run-outcome "${{ steps.capacity-tests.outcome }}"
+
+      - name: Upload scheduled capacity reports and resource metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dhcpv4-capacity-scheduled-${{ matrix.server_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
+  dhcpv4-capacity-endurance:
+    name: Manual capacity endurance / ${{ matrix.name }}
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ISC DHCP 4.4.3-P1
+            server: isc-dhcpd
+            server_version: isc-final
+          - name: Kea 3.2.0
+            server: kea
+            server_version: kea-stable
+    env:
+      TEST_DHCPV4_CAPACITY_DURATION_SECONDS: ${{ vars.DHCP_CAPACITY_ENDURANCE_SECONDS || '3600' }}
+      TEST_DHCPV4_CAPACITY_MIN_ENDURANCE_COMMITS: ${{ vars.DHCP_CAPACITY_ENDURANCE_MIN_COMMITS || '1024' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run duration-based capacity churn
+        id: capacity-tests
+        run: >-
+          bash ./run_capacity_tests.sh
+          --server ${{ matrix.server }}
+          --server-version ${{ matrix.server_version }}
+          --profile endurance
+
+      - name: Tear down containers
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.capacity.yml down -v
+
+      - name: Publish endurance summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "Manual capacity endurance / ${{ matrix.name }}"
+          --run-outcome "${{ steps.capacity-tests.outcome }}"
+
+      - name: Upload endurance reports and resource metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dhcpv4-capacity-endurance-${{ matrix.server_version }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   server-ping-check:
     name: RFC 2131 ping check / ${{ matrix.name }}
     runs-on: ubuntu-latest

@@ -23,7 +23,12 @@ except ImportError:
 
 INTERFACE = os.getenv("TEST_INTERFACE", "eth0")
 SERVER_IP = os.getenv("TEST_SERVER_IP", "172.29.0.2")
-CAPTURE_TIMEOUT = float(os.getenv("TEST_DHCPV4_SOAK_CAPTURE_TIMEOUT", "10"))
+CAPTURE_TIMEOUT = float(
+    os.getenv(
+        "TEST_DHCPV4_LOAD_CAPTURE_TIMEOUT",
+        os.getenv("TEST_DHCPV4_SOAK_CAPTURE_TIMEOUT", "10"),
+    )
+)
 PARAMETER_REQUEST_LIST = [1, 3, 6, 15, 51, 58, 59]
 
 

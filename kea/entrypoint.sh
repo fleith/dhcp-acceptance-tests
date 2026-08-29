@@ -19,6 +19,8 @@ RFC3442_EXTRA_ROUTE_COUNT="${RFC3442_EXTRA_ROUTE_COUNT:-30}"
 DHCPV4_RFC3396_POLICY_DOMAIN="${DHCPV4_RFC3396_POLICY_DOMAIN:-rfc3396-reassembled.test}"
 DHCPV4_POOL_START_OFFSET="${DHCPV4_POOL_START_OFFSET:-100}"
 DHCPV4_POOL_END_OFFSET="${DHCPV4_POOL_END_OFFSET:-200}"
+DHCPV4_POOL_START_ADDRESS="${DHCPV4_POOL_START_ADDRESS:-}"
+DHCPV4_POOL_END_ADDRESS="${DHCPV4_POOL_END_ADDRESS:-}"
 DHCPV4_ALT_POOL_ENABLED="${DHCPV4_ALT_POOL_ENABLED:-1}"
 DHCPV4_RESERVED_MAC="${DHCPV4_RESERVED_MAC:-02:00:00:ff:00:01}"
 DHCPV4_RESERVED_OFFSET="${DHCPV4_RESERVED_OFFSET:-50}"
@@ -64,6 +66,13 @@ $NETMASK
 EOF
 NET="$(( i1 & m1 )).$(( i2 & m2 )).$(( i3 & m3 )).$(( i4 & m4 ))"
 NET3="$(echo "$NET" | cut -d. -f1-3)"
+
+if [ -z "$DHCPV4_POOL_START_ADDRESS" ]; then
+    DHCPV4_POOL_START_ADDRESS="${NET3}.${DHCPV4_POOL_START_OFFSET}"
+fi
+if [ -z "$DHCPV4_POOL_END_ADDRESS" ]; then
+    DHCPV4_POOL_END_ADDRESS="${NET3}.${DHCPV4_POOL_END_OFFSET}"
+fi
 
 IFS=. read -r n1 n2 n3 n4 << EOF
 $NET
@@ -251,7 +260,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
         ],
         "pools": [
           {
-            "pool": "${NET3}.${DHCPV4_POOL_START_OFFSET} - ${NET3}.${DHCPV4_POOL_END_OFFSET}"
+            "pool": "$DHCPV4_POOL_START_ADDRESS - $DHCPV4_POOL_END_ADDRESS"
           }
         ],
         "option-data": [
@@ -299,7 +308,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
 }
 CONF
 
-echo "[kea] version=$KEA_VERSION interface=$IFACE ip=$IP netmask=$NETMASK network=$NET pool=${NET3}.${DHCPV4_POOL_START_OFFSET}-${NET3}.${DHCPV4_POOL_END_OFFSET} alt_subnet=$ALT_SUBNET_CIDR overlap_order=$DHCPV4_OVERLAP_ORDER"
+echo "[kea] version=$KEA_VERSION interface=$IFACE ip=$IP netmask=$NETMASK network=$NET pool=$DHCPV4_POOL_START_ADDRESS-$DHCPV4_POOL_END_ADDRESS alt_subnet=$ALT_SUBNET_CIDR overlap_order=$DHCPV4_OVERLAP_ORDER"
 echo "[kea] Generated /etc/kea/kea-dhcp4.conf:"
 cat /etc/kea/kea-dhcp4.conf
 

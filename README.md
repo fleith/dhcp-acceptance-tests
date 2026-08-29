@@ -84,6 +84,15 @@ bash ./run_soak_tests.sh --server kea --server-version kea-stable --profile smok
 # Scheduled profile: 120 rounds x 24 clients = 2,880 lease commits
 bash ./run_soak_tests.sh --server kea --server-version kea-stable --profile scheduled
 
+# Exact 256-address fill, renewal, exhaustion, release/reuse, and resource metrics
+bash ./run_capacity_tests.sh --server kea --server-version kea-stable --profile smoke
+
+# Exact 1,024-address scheduled capacity profile
+bash ./run_capacity_tests.sh --server kea --server-version kea-stable --profile scheduled
+
+# Duration-based endurance; defaults to one hour and 1,024 minimum commits
+bash ./run_capacity_tests.sh --server kea --server-version kea-stable --profile endurance
+
 # RFC 2131 server ping-check: silent candidate and responding candidate
 bash ./run_ping_check_tests.sh --server isc-dhcpd
 bash ./run_ping_check_tests.sh --server kea  # defaults to Kea 3.2
@@ -252,6 +261,21 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_SOAK_LATENCY_GROWTH_LIMIT_MS` | `500` | Maximum late-window p95 increase over the early-window p95 |
 | `TEST_DHCPV4_SOAK_MEMORY_GROWTH_LIMIT_MIB` | `64` | Maximum final server-memory increase over the pre-soak sample |
 | `TEST_DHCPV4_SOAK_PIDS_GROWTH_LIMIT` | `8` | Maximum final server PID-count increase over the pre-soak sample |
+| `TEST_DHCPV4_CAPACITY_POOL_START` | profile | First address in the isolated exact-size capacity pool |
+| `TEST_DHCPV4_CAPACITY_POOL_END` | profile | Last address in the isolated exact-size capacity pool |
+| `TEST_DHCPV4_CAPACITY_POOL_SIZE` | profile | Exact inclusive pool size; checked against the configured endpoints |
+| `TEST_DHCPV4_CAPACITY_BATCH_SIZE` | `64` | Concurrent clients per capacity wave (8..128) |
+| `TEST_DHCPV4_CAPACITY_REPLACEMENTS` | `64` | Full-pool bindings released and replaced to prove exact safe reuse |
+| `TEST_DHCPV4_CAPACITY_POST_BATCH_SIZE` | `16` | Fresh clients admitted after capacity cleanup |
+| `TEST_DHCPV4_CAPACITY_CAPTURE_TIMEOUT` | `15` | Maximum seconds to collect one capacity response batch |
+| `TEST_DHCPV4_CAPACITY_BATCH_DEADLINE` | `30` | Maximum wall time for one capacity DORA batch |
+| `TEST_DHCPV4_CAPACITY_P95_LIMIT_MS` | `5000` | Maximum combined capacity response-latency p95 |
+| `TEST_DHCPV4_CAPACITY_MIN_COMMITS_PER_SECOND` | `1` | Minimum portable committed-leases rate |
+| `TEST_DHCPV4_CAPACITY_DURATION_SECONDS` | `3600` | Minimum endurance wall time; manual CI defaults to one hour |
+| `TEST_DHCPV4_CAPACITY_MIN_ENDURANCE_COMMITS` | `1024` | Minimum endurance commits; must exceed the endurance pool to prove reuse |
+| `TEST_DHCPV4_CAPACITY_MEMORY_GROWTH_LIMIT_MIB` | `256` | Maximum capacity-run server memory growth |
+| `TEST_DHCPV4_CAPACITY_MEMORY_PER_LEASE_LIMIT_KIB` | `512` | Maximum memory growth per peak active lease |
+| `TEST_DHCPV4_CAPACITY_PIDS_GROWTH_LIMIT` | `8` | Maximum capacity-run server PID-count growth |
 | `TEST_DHCPV4_STORAGE_BASELINE_CLIENTS` | `10` | Durable clients recorded before isolated lease storage is exhausted |
 | `TEST_DHCPV4_STORAGE_POOL_CAPACITY` | `11` | Safety check for the dedicated storage-fault pool |
 | `TEST_DHCPV4_STORAGE_FAULT_TIMEOUT` | `4` | Maximum seconds to capture the transaction attempted under `ENOSPC` |
@@ -297,6 +321,13 @@ service. It compares early and late latency windows, verifies availability
 after the final round, and records server CPU, memory, and PID measurements.
 Configured growth limits catch bounded resource regressions; the measurements
 remain environment-specific and are not portable capacity numbers.
+The isolated large-pool profile fills and renews 256 addresses on pull requests
+and 1,024 addresses on scheduled runs, proves exact exhaustion, releases a
+subset, and requires replacements to reuse only those addresses. Its manual
+duration profile churns a 512-address pool for at least one hour by default.
+All three modes publish commit rate, p50/p95/p99 latency, CPU, memory, PID, and
+per-lease memory-growth metrics. These are regression contracts; production
+sizing still requires target hardware, pool sizes, duration, and objectives.
 The runtime storage-fault profile fills a disposable 32 MiB lease filesystem,
 records the final transaction outcome, force-kills the server, restores
 capacity, and requires every pre-fault binding plus every fault-time ACK to
