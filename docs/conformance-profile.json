@@ -153,17 +153,30 @@
     {
       "id": "GAP-CAPACITY",
       "title": "Pool exhaustion, bounded load, lease churn, soak, and resource growth",
-      "status": "partial",
-      "mode": "focused",
+      "status": "covered",
+      "mode": "orchestrated",
       "evidence": [
         "features/dhcp_address_pool.feature",
         "features/dhcpv4_conformance.feature",
         "features/dhcpv4_stress_crash.feature",
         "features/dhcpv4_soak.feature",
+        "features/dhcpv4_capacity.feature",
         "run_stress_crash_tests.sh",
-        "run_soak_tests.sh"
+        "run_soak_tests.sh",
+        "run_capacity_tests.sh",
+        "docker-compose.capacity.yml"
       ],
-      "tags": ["@pool_exhaustion", "@load", "@churn", "@stress_crash", "@soak"]
+      "tags": [
+        "@pool_exhaustion",
+        "@load",
+        "@churn",
+        "@stress_crash",
+        "@soak",
+        "@capacity",
+        "@large_pool",
+        "@capacity_endurance"
+      ],
+      "notes": "An isolated /20 topology provides exact 256-address PR and 1024-address scheduled pools. Full-pool allocation, original-client renewal, exhaustion, release/replacement reuse, response metrics, resource scaling, and configurable duration-based endurance run against ISC DHCP and Kea. Thresholds and deployment-sized duration remain target-specific."
     },
     {
       "id": "GAP-CRASH-CONSISTENCY",
@@ -243,7 +256,7 @@
         "docs/rfc-requirements.csv"
       ],
       "tags": [],
-      "notes": "The maintained matrix currently records covered, partial, conditional, and gap rows; full compliance remains blocked by every unresolved or unexecuted row."
+      "notes": "The maintained matrix records covered and capability-conditional rows; a complete product claim still requires every applicable conditional profile to be executed or documented as out of scope."
     }
   ]
 }

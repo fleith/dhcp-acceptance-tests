@@ -22,6 +22,9 @@ needed before making a complete claim.
 | Stress/crash smoke | `bash ./run_stress_crash_tests.sh --server <server> --profile smoke` | PR-safe mixed allocation, renewal, retransmission, SIGKILL, and durable-ACK recovery |
 | Scheduled stress/crash | `bash ./run_stress_crash_tests.sh --server <server> --profile scheduled` | 480 pre-crash churn commits plus larger active, in-flight, and recovery waves |
 | Scheduled DHCPv4 soak | `bash ./run_soak_tests.sh --server <server> --profile scheduled` | 2,880 acquire/release commits, released-address reuse, latency drift, post-soak availability, and container resource growth |
+| Large-pool capacity smoke | `bash ./run_capacity_tests.sh --server <server> --profile smoke` | Fill, renew, exhaust, and recycle an exact 256-address pool with latency, throughput, and resource limits |
+| Scheduled large-pool capacity | `bash ./run_capacity_tests.sh --server <server> --profile scheduled` | The same ownership contract over an exact 1,024-address pool |
+| Capacity endurance | `bash ./run_capacity_tests.sh --server <server> --profile endurance` | Duration-based churn with cumulative reuse, response metrics, resource sampling, and post-run availability; one hour by default |
 | Pool exhaustion | Select `@pool_exhaustion` with a deliberately small pool | Exhaustion and recovery without making normal runs consume the entire pool |
 | Server ping check | `bash ./run_ping_check_tests.sh --server <server>` | RFC 2131 candidate-address ICMP probing with silent and responding peers |
 | IPv4 observability | `bash ./run_ipv4_observability_tests.sh --server <server>` | DECLINE administrative evidence plus Kea addressless allocation or ISC live DDNS behavior |
@@ -41,11 +44,23 @@ needed before making a complete claim.
 | Runtime storage fault | `bash ./run_storage_fault_tests.sh --server <server>` | Exhaust an isolated lease filesystem, SIGKILL, and reconcile every ACK after recovery |
 | Capability | Select `@capability` or one `@requires_*` tag and configure its adapter | Product features that cannot be assumed for every DHCP server |
 
-The focused, stress/crash, and soak checks are deliberately bounded. They catch
-correctness, latency, persistence, and basic resource regressions; they are not
-a hardware capacity benchmark, multi-hour soak test, or a substitute for
-product-specific sizing. The smoke profile runs on pushes and pull requests.
-The larger profiles run on the scheduled workflow and manual dispatch.
+The focused, stress/crash, soak, and capacity checks have explicit bounds. They
+catch correctness, latency, persistence, throughput, and resource regressions;
+their measured rates are not portable hardware sizing numbers. The capacity
+smoke profile runs on pushes and pull requests, the 1,024-address profile runs
+on the scheduled workflow, and manual endurance runs for one hour by default.
+Targets can raise the duration, pool, and service thresholds for deployment
+qualification.
+
+The isolated capacity topology expands only its own network to `/20`. Its smoke
+and scheduled profiles fill every configured address in concurrent waves,
+renew every binding as its original client, verify that one additional client
+receives no offer, release a subset, and require replacements to use exactly
+that released set without colliding with surviving leases. The runner records
+commit rate, p50/p95/p99 response latency, CPU, memory, PID growth, and memory
+growth per peak active lease. Duration mode repeatedly commits and releases
+batches until both its configured clock and minimum transaction count have
+been satisfied, then verifies post-run availability.
 
 The bounded DHCPv4 soak deliberately requests more leases over time than the
 isolated pool could supply without reuse. Every round must commit unique active
@@ -182,9 +197,11 @@ a target-service adapter runs it.
 The malformed-input profile is covered by deterministic DHCPv4 and DHCPv6
 matrices spanning every client message family, corrupt required metadata,
 truncated option framing, state preservation, and valid-transaction recovery.
-Those bounded checks complement rather than replace open-ended fuzzing. Capacity
-remains `partial`: large-pool benchmarking and multi-hour or multi-day soak
-testing still belong in a target service's deployment qualification.
+Those bounded checks complement rather than replace open-ended fuzzing. The
+capacity profile is covered by exact 256- and 1,024-address fill tests plus a
+configurable duration-based endurance contract. Its metrics and defaults are
+portable regression checks, while deployment-sized pools, multi-day duration,
+and hardware-specific service objectives remain the target's qualification.
 
 ## Claim boundary and RFC traceability
 

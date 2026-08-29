@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "docs" / "conformance-profile.json"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 RESERVED_IID_TOPOLOGY = ROOT / "docker-compose.ipv6-reserved-iid.yml"
+CAPACITY_TOPOLOGY = ROOT / "docker-compose.capacity.yml"
+CAPACITY_RUNNER = ROOT / "run_capacity_tests.sh"
 
 
 class ConformanceProfileTests(unittest.TestCase):
@@ -117,6 +119,26 @@ class ConformanceProfileTests(unittest.TestCase):
         )
         self.assertEqual(malformed["status"], "covered")
         self.assertIn("features/dhcpv6_malformed_corpus.feature", malformed["evidence"])
+
+    def test_capacity_profile_has_smoke_scheduled_and_endurance_execution(self):
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        runner = CAPACITY_RUNNER.read_text(encoding="utf-8")
+        topology = CAPACITY_TOPOLOGY.read_text(encoding="utf-8")
+        capacity = next(
+            row for row in self.profile["coverage"] if row["id"] == "GAP-CAPACITY"
+        )
+
+        self.assertEqual(capacity["status"], "covered")
+        self.assertEqual(capacity["mode"], "orchestrated")
+        self.assertIn("features/dhcpv4_capacity.feature", capacity["evidence"])
+        self.assertIn("dhcpv4-capacity-smoke:", workflow)
+        self.assertIn("dhcpv4-capacity-scheduled:", workflow)
+        self.assertIn("dhcpv4-capacity-endurance:", workflow)
+        self.assertIn("TEST_DHCPV4_CAPACITY_POOL_SIZE=256", runner)
+        self.assertIn("TEST_DHCPV4_CAPACITY_POOL_SIZE=1024", runner)
+        self.assertIn("  endurance)", runner)
+        self.assertIn("TEST_DHCPV4_CAPACITY_DURATION_SECONDS", runner)
+        self.assertIn("subnet: 172.29.0.0/20", topology)
 
     def test_rfc_traceability_profile_is_complete(self):
         traceability = next(
