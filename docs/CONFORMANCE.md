@@ -18,7 +18,7 @@ needed before making a complete claim.
 | Level | Invocation | Purpose |
 |---|---|---|
 | Required | `bash ./run_dhcp_tests.sh --server <server> --ip-version <version>` | Protocol flows and ordinary negative cases |
-| Focused robustness | `bash ./run_dhcp_tests.sh --server <server> --ip-version v4 --tags @focused_robustness` | Bounded malformed corpus, concurrent load deadline, and churn |
+| Focused robustness | `bash ./run_dhcp_tests.sh --server <server> --ip-version <v4|v6> --tags @focused_robustness` | Bounded malformed matrices for both IP families, plus DHCPv4 concurrent load and churn |
 | Stress/crash smoke | `bash ./run_stress_crash_tests.sh --server <server> --profile smoke` | PR-safe mixed allocation, renewal, retransmission, SIGKILL, and durable-ACK recovery |
 | Scheduled stress/crash | `bash ./run_stress_crash_tests.sh --server <server> --profile scheduled` | 480 pre-crash churn commits plus larger active, in-flight, and recovery waves |
 | Scheduled DHCPv4 soak | `bash ./run_soak_tests.sh --server <server> --profile scheduled` | 2,880 acquire/release commits, released-address reuse, latency drift, post-soak availability, and container resource growth |
@@ -179,10 +179,12 @@ Kea currently documents client Reconfigure as unsupported, so this profile is
 not advertised by the bundled reference fixtures and remains conditional until
 a target-service adapter runs it.
 
-The supplied malformed-input, load, churn, and soak tests are intentionally
-bounded, so their profile rows remain `partial`: broader per-message/per-option
-fuzzing, large-pool benchmarking, and multi-hour or multi-day soak testing still
-belong in a target service's deployment qualification.
+The malformed-input profile is covered by deterministic DHCPv4 and DHCPv6
+matrices spanning every client message family, corrupt required metadata,
+truncated option framing, state preservation, and valid-transaction recovery.
+Those bounded checks complement rather than replace open-ended fuzzing. Capacity
+remains `partial`: large-pool benchmarking and multi-hour or multi-day soak
+testing still belong in a target service's deployment qualification.
 
 ## Claim boundary and RFC traceability
 

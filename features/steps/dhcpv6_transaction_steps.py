@@ -11,6 +11,7 @@ from dhcpv6_support import (
     INTERFACE,
     Ether,
     IPv6,
+    Raw,
     UDP,
     cls as _cls,
     client_duid as _client_duid,
@@ -101,6 +102,74 @@ def _send_malformed_transactions(cases, timeout=3):
         time.sleep(0.1)
     context_storage_v6["malformed_transaction_sniffer"] = sniffer
     context_storage_v6["malformed_transactions"] = transactions
+
+
+MALFORMED_DHCPV6_STATEFUL_MESSAGE_TYPES = (
+    (1, "SOLICIT"),
+    (3, "REQUEST"),
+    (4, "CONFIRM"),
+    (5, "RENEW"),
+    (6, "REBIND"),
+    (8, "RELEASE"),
+    (9, "DECLINE"),
+)
+MALFORMED_DHCPV6_LENGTH_OPTIONS = (
+    ("truncated Client Identifier", b"\x00\x01\x00\x20\x00\x04"),
+    ("truncated IA_NA", b"\x00\x03\x00\x0c\x00\x00\x00\x01"),
+)
+MALFORMED_DHCPV6_HEADER_OPTIONS = (
+    ("option code without length", b"\x00\x01"),
+    ("truncated option length", b"\x00\x01\x00"),
+)
+
+
+def _raw_malformed_client_message(message_type, trid, malformed_options):
+    payload = bytes([message_type]) + trid.to_bytes(3, "big") + malformed_options
+    return (
+        Ether(src=context_storage_v6["client_mac"], dst="33:33:00:01:00:02")
+        / IPv6(src=context_storage_v6["client_ll"], dst="ff02::1:2")
+        / UDP(sport=546, dport=547)
+        / Raw(load=payload)
+    )
+
+
+MALFORMED_DHCPV6_OPTIONS = (
+    MALFORMED_DHCPV6_LENGTH_OPTIONS + MALFORMED_DHCPV6_HEADER_OPTIONS
+)
+
+
+def _send_bounded_dhcpv6_cases(message_types, mutations):
+    _require_scapy_v6()
+    cases = []
+    for message_type, message_name in message_types:
+        for mutation_name, malformed_options in mutations:
+            trid = _new_trid()
+            cases.append(
+                (
+                    f"{message_name} with {mutation_name}",
+                    _raw_malformed_client_message(
+                        message_type, trid, malformed_options
+                    ),
+                    trid,
+                )
+            )
+    _send_malformed_transactions(cases, timeout=4)
+
+
+@when("the client sends every stateful DHCPv6 message and wire-mutation pair")
+def step_send_bounded_dhcpv6_malformed_corpus(context):
+    _send_bounded_dhcpv6_cases(
+        MALFORMED_DHCPV6_STATEFUL_MESSAGE_TYPES,
+        MALFORMED_DHCPV6_OPTIONS,
+    )
+
+
+@when("DHCPv6 INFORMATION-REQUEST carries every bounded wire mutation")
+def step_send_dhcpv6_information_request_corpus(context):
+    _send_bounded_dhcpv6_cases(
+        ((11, "INFORMATION-REQUEST"),),
+        MALFORMED_DHCPV6_OPTIONS,
+    )
 
 
 def _lease_ia():
@@ -211,6 +280,25 @@ def step_assert_malformed_transactions_discarded(context):
         if response_names:
             failures.append(f"{label}: {', '.join(response_names)}")
     assert not failures, "Server answered malformed DHCPv6 transaction(s): " + "; ".join(failures)
+
+
+@then("the reference server exposes its malformed DHCPv6 INFORMATION-REQUEST behavior")
+def step_reference_malformed_dhcpv6_information_behavior(context):
+    sniffer = context_storage_v6["malformed_transaction_sniffer"]
+    sniffer.join()
+    captured = sniffer.results or []
+    responses = []
+    for label, trid in context_storage_v6["malformed_transactions"]:
+        for name in ("DHCP6_Advertise", "DHCP6_Reply"):
+            if any(
+                packet.haslayer(_cls(name))
+                and getattr(packet[_cls(name)], "trid", None) == trid
+                for packet in captured
+            ):
+                responses.append(f"{label}: {name}")
+    assert responses, (
+        "Reference server unexpectedly rejected every malformed DHCPv6 INFORMATION-REQUEST"
+    )
 
 
 @when("a client requests a DHCPv6 lease using Rapid Commit")

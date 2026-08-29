@@ -59,7 +59,7 @@ OFFER_HOLD_CONTENDERS = int(
     os.getenv("TEST_DHCPV4_OFFER_HOLD_CONTENDERS", "4")
 )
 CHURN_CYCLES = int(os.getenv("TEST_DHCPV4_CHURN_CYCLES", "12"))
-FUZZ_CASES = int(os.getenv("TEST_DHCPV4_FUZZ_CASES", "24"))
+FUZZ_CASES = int(os.getenv("TEST_DHCPV4_FUZZ_CASES", "40"))
 STATE_DIR = Path(os.getenv("TEST_STATE_DIR", "/app/test-state"))
 STATE_FILE = STATE_DIR / "dhcpv4-persistent-binding.json"
 PERSISTENT_MAC = "02:00:00:fe:00:01"
@@ -356,7 +356,7 @@ def _run_adapter(variable):
     )
 
 
-def _rebind(lease):
+def _rebind_responses(lease):
     options = [("message-type", "request")]
     if lease.get("client_id") is not None:
         options.append(("client_id", lease["client_id"]))
@@ -371,6 +371,11 @@ def _rebind(lease):
         flags=0x8000,
     )
     responses = _capture_packets([packet], xid, {5, 6}, mac=lease["mac"], timeout=5)
+    return responses
+
+
+def _rebind(lease):
+    responses = _rebind_responses(lease)
     assert not [packet for packet in responses if _message_type(packet) == 6]
     acks = [packet for packet in responses if _message_type(packet) == 5]
     assert acks, f"Active binding {lease['ip']} was not renewed/rebound"
@@ -738,79 +743,208 @@ def step_class_option(context):
         assert actual == expected, f"{label} domain {actual!r} != {expected!r}"
 
 
-def _malformed_payload(mac, xid, case, offered_ip, server_id):
-    bootp = bytes(BOOTP(chaddr=mac_bytes(mac), flags=0x8000, xid=xid))
+MALFORMED_DHCPV4_MESSAGE_TYPES = (
+    (1, "DISCOVER"),
+    (3, "REQUEST"),
+    (4, "DECLINE"),
+    (7, "RELEASE"),
+    (8, "INFORM"),
+)
+MALFORMED_DHCPV4_MUTATIONS = (
+    "invalid magic cookie",
+    "missing message type",
+    "zero-length message type",
+    "truncated message type value",
+    "invalid message type value",
+    "server BOOTREPLY opcode without message type",
+    "truncated magic cookie",
+    "truncated oversized message type",
+)
+MALFORMED_DHCPV4_TRAILING_MUTATIONS = (
+    "truncated trailing option header",
+    "truncated trailing client identifier",
+)
+
+
+def _malformed_payload(mac, xid, message_type, mutation, target_ip, server_id):
+    ciaddr = target_ip if message_type in {7, 8} else "0.0.0.0"
+    bootp = bytes(
+        BOOTP(chaddr=mac_bytes(mac), flags=0x8000, xid=xid, ciaddr=ciaddr)
+    )
     cookie = b"\x63\x82\x53\x63"
     if cookie in bootp:
         bootp = bootp[: bootp.index(cookie)]
-    request_tail = (
-        b"\x36\x04" + ipaddress.ip_address(server_id).packed
-        + b"\x32\x04" + ipaddress.ip_address(offered_ip).packed
-        + b"\xff"
-    )
-    if case % 6 == 0:
-        options = cookie + b"\x35\x00" + request_tail
-    elif case % 6 == 1:
-        options = cookie + b"\x35\xff\x03" + request_tail
-    elif case % 6 == 2:
-        options = b"\x00\x00\x00\x00\x35\x01\x03" + request_tail
-    elif case % 6 == 3:
-        options = cookie + request_tail
-    elif case % 6 == 4:
-        options = cookie + b"\x35\x01\x00" + request_tail
-    else:
-        declared = 8 + (case % 200)
-        options = cookie + bytes([53, declared, 3]) + request_tail[:3]
+    message_option = bytes([53, 1, message_type])
+    selection_options = b""
+    if message_type in {3, 4}:
+        selection_options += b"\x32\x04" + ipaddress.ip_address(target_ip).packed
+    if message_type in {3, 4, 7}:
+        selection_options += b"\x36\x04" + ipaddress.ip_address(server_id).packed
+    valid_options = cookie + message_option + selection_options + b"\xff"
+
+    if mutation == 0:
+        options = b"\x00\x00\x00\x00" + valid_options[len(cookie):]
+    elif mutation == 1:
+        options = cookie + selection_options + b"\xff"
+    elif mutation == 2:
+        options = cookie + b"\x35\x00" + selection_options + b"\xff"
+    elif mutation == 3:
+        options = cookie + b"\x35\x02" + bytes([message_type])
+    elif mutation == 4:
+        options = cookie + b"\x35\x01\x00" + selection_options + b"\xff"
+    elif mutation == 5:
+        malformed_bootp = bytearray(bootp)
+        malformed_bootp[0] = 2
+        bootp = bytes(malformed_bootp)
+        options = cookie + selection_options + b"\xff"
+    elif mutation == 6:
+        options = cookie[:2] + message_option + selection_options + b"\xff"
+    elif mutation == 7:
+        options = cookie + b"\x35\xff" + bytes([message_type])
+    elif mutation == 8:
+        options = cookie + message_option + selection_options + b"\x36"
+    else:  # mutation == 9
+        options = cookie + message_option + b"\x3d\xff\x01"
     return bootp + options
 
 
-@when("a deterministic corpus of malformed DHCPv4 messages is sent")
-def step_malformed_corpus(context):
-    require_scapy_v4()
-    assert 5 <= FUZZ_CASES <= 128, "TEST_DHCPV4_FUZZ_CASES must be in 5..128"
+@given("a DHCPv4 client holds an active lease for malformed mutation checks")
+def step_active_lease_for_malformed_checks(context):
+    _ensure_cleanup(context)
+    _state(context)["malformed_owner_lease"] = _dora(context)
+
+
+def _send_malformed_dhcpv4_cases(context, mutations, count, response_key):
+    lease = _state(context)["malformed_owner_lease"]
+    server_id = dhcp_option(lease["offer"], "server_id") or SERVER_IP
+    corpus = [
+        (message_type, message_name, mutation, mutation_name)
+        for mutation, mutation_name in mutations
+        for message_type, message_name in MALFORMED_DHCPV4_MESSAGE_TYPES
+    ]
     cases = []
-    for index in range(FUZZ_CASES):
-        mac = _new_mac()
-        discovery = _discover(mac)
-        assert discovery["offers"], f"No setup offer for malformed case {index}"
-        offer = discovery["offers"][0]
-        xid = discovery["xid"]
-        offered_ip = offer[BOOTP].yiaddr
-        server_id = dhcp_option(offer, "server_id") or SERVER_IP
-        malformed = _malformed_payload(mac, xid, index, offered_ip, server_id)
-        if index % 6 == 3:
-            malformed = bytearray(malformed)
-            malformed[0] = 2
-            malformed = bytes(malformed)
+    for index in range(count):
+        message_type, message_name, mutation, mutation_name = corpus[
+            index % len(corpus)
+        ]
+        xid = _new_xid()
+        malformed = _malformed_payload(
+            lease["mac"],
+            xid,
+            message_type,
+            mutation,
+            lease["ip"],
+            server_id,
+        )
         packet = (
-            Ether(src=mac, dst="ff:ff:ff:ff:ff:ff")
+            Ether(src=lease["mac"], dst="ff:ff:ff:ff:ff:ff")
             / IP(src="0.0.0.0", dst="255.255.255.255")
             / UDP(sport=68, dport=67)
             / Raw(load=malformed)
         )
-        cases.append({"xid": xid, "packet": packet})
+        cases.append(
+            {
+                "xid": xid,
+                "packet": packet,
+                "label": f"{message_name} with {mutation_name}",
+            }
+        )
     sniffer = start_dhcp_sniffer(INTERFACE, timeout=3)
     for case in cases:
         sendp(case["packet"], iface=INTERFACE, verbose=False)
     sniffer.join()
     xids = {case["xid"] for case in cases}
     responses = [
-        packet for packet in (sniffer.results or [])
+        (
+            next(
+                case["label"]
+                for case in cases
+                if case["xid"] == packet[BOOTP].xid
+            ),
+            packet,
+        )
+        for packet in (sniffer.results or [])
         if packet.haslayer(BOOTP)
         and packet.haslayer(DHCP)
         and packet[BOOTP].xid in xids
-        and _message_type(packet) == 5
+        and _message_type(packet) in {2, 5, 6}
     ]
-    _state(context)["malformed_responses"] = responses
+    _state(context)[response_key] = responses
 
 
-@then("no malformed DHCPv4 transaction receives a DHCPACK")
+@when("a deterministic corpus of malformed DHCPv4 messages is sent")
+def step_malformed_corpus(context):
+    require_scapy_v4()
+    minimum = len(MALFORMED_DHCPV4_MESSAGE_TYPES) * len(
+        MALFORMED_DHCPV4_MUTATIONS
+    )
+    assert minimum <= FUZZ_CASES <= 128, (
+        f"TEST_DHCPV4_FUZZ_CASES must be in {minimum}..128 so every "
+        "message/mutation pair is exercised"
+    )
+    _send_malformed_dhcpv4_cases(
+        context,
+        tuple(enumerate(MALFORMED_DHCPV4_MUTATIONS)),
+        FUZZ_CASES,
+        "malformed_responses",
+    )
+
+
+@when("every DHCPv4 message family carries malformed trailing option metadata")
+def step_malformed_trailing_option_corpus(context):
+    mutations = tuple(
+        (index + len(MALFORMED_DHCPV4_MUTATIONS), name)
+        for index, name in enumerate(MALFORMED_DHCPV4_TRAILING_MUTATIONS)
+    )
+    _send_malformed_dhcpv4_cases(
+        context,
+        mutations,
+        len(MALFORMED_DHCPV4_MESSAGE_TYPES) * len(mutations),
+        "malformed_trailing_responses",
+    )
+
+
+@then("no malformed DHCPv4 transaction receives an OFFER ACK or NAK")
 def step_malformed_no_lease(context):
     responses = _state(context)["malformed_responses"]
     assert not responses, (
-        "Malformed REQUEST transactions received DHCPACK: "
-        f"{[(packet[BOOTP].xid, _message_type(packet)) for packet in responses]}"
+        "Server answered malformed DHCPv4 transaction(s): "
+        f"{[(label, packet[BOOTP].xid, _message_type(packet)) for label, packet in responses]}"
     )
+
+
+@then("no malformed trailing DHCPv4 option is accepted")
+def step_malformed_trailing_options_rejected(context):
+    responses = _state(context)["malformed_trailing_responses"]
+    assert not responses, (
+        "Server processed DHCPv4 messages with malformed trailing options: "
+        f"{[(label, packet[BOOTP].xid, _message_type(packet)) for label, packet in responses]}"
+    )
+
+
+@then("the reference server exposes its malformed trailing-option behavior")
+def step_reference_malformed_trailing_option_behavior(context):
+    responses = _state(context)["malformed_trailing_responses"]
+    assert responses, "Reference server unexpectedly rejected every malformed trailing option"
+
+
+@then("malformed trailing metadata can invalidate the targeted DHCPv4 binding")
+def step_reference_malformed_trailing_option_changes_binding(context):
+    lease = _state(context)["malformed_owner_lease"]
+    responses = _rebind_responses(lease)
+    acknowledgements = [
+        packet for packet in responses if _message_type(packet) == 5
+    ]
+    assert not acknowledgements, (
+        "Reference server unexpectedly preserved the binding after processing "
+        "malformed trailing RELEASE or DECLINE metadata"
+    )
+
+
+@then("the DHCPv4 lease targeted by malformed messages remains renewable")
+def step_malformed_owner_lease_remains_renewable(context):
+    lease = _state(context)["malformed_owner_lease"]
+    _state(context)["malformed_owner_rebind"] = _rebind(lease)
 
 
 @then("a valid DHCPv4 client still completes DORA")

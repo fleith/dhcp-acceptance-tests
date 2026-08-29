@@ -7,10 +7,10 @@ import subprocess
 import time
 
 try:
-    from scapy.all import AsyncSniffer, Ether, IPv6, UDP, sendp
+    from scapy.all import AsyncSniffer, Ether, IPv6, Raw, UDP, sendp
     from scapy.layers import dhcp6 as sc_dhcp6
 except ImportError:
-    AsyncSniffer = Ether = IPv6 = UDP = sendp = None
+    AsyncSniffer = Ether = IPv6 = Raw = UDP = sendp = None
     sc_dhcp6 = None
 
 

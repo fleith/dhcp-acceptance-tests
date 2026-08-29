@@ -103,6 +103,21 @@ class ConformanceProfileTests(unittest.TestCase):
         ):
             self.assertIn(candidate, forbidden)
 
+    def test_focused_robustness_runs_both_ip_families(self):
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        start = workflow.index("  focused-robustness:")
+        end = workflow.index("\n  runtime-storage-fault:", start)
+        job = workflow[start:end]
+        self.assertIn("ip_version: [v4, v6]", job)
+        self.assertIn("--ip-version ${{ matrix.ip_version }}", job)
+        self.assertIn("--tags @focused_robustness", job)
+
+        malformed = next(
+            row for row in self.profile["coverage"] if row["id"] == "GAP-MALFORMED"
+        )
+        self.assertEqual(malformed["status"], "covered")
+        self.assertIn("features/dhcpv6_malformed_corpus.feature", malformed["evidence"])
+
     def test_rfc_traceability_profile_is_complete(self):
         traceability = next(
             row
