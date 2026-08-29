@@ -66,8 +66,11 @@ bash ./run_config_safety_tests.sh --server isc-dhcpd --overlap-policy reject
 # Runtime lease and option selection for accepted overlapping Kea subnets
 bash ./run_overlap_lease_tests.sh --server kea --server-version kea-stable
 
-# Bounded malformed corpus, concurrent deadline, and lease churn
+# DHCPv4 bounded malformed corpus, concurrent deadline, and lease churn
 bash ./run_dhcp_tests.sh --server kea --ip-version v4 --tags @focused_robustness
+
+# DHCPv6 bounded malformed corpus across all client message families
+bash ./run_dhcp_tests.sh --server kea --ip-version v6 --tags @focused_robustness
 
 # Mixed allocation/renewal load with SIGKILL and durable-ACK recovery
 bash ./run_stress_crash_tests.sh --server kea --server-version kea-stable --profile smoke
@@ -220,7 +223,7 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS` | `0` | Target's exact configured offer-hold duration for pre/post-boundary testing |
 | `TEST_DHCPV4_OFFER_HOLD_CONTENDERS` | `4` | Concurrent contenders used on each side of the offer-hold expiry boundary |
 | `TEST_DHCPV4_CHURN_CYCLES` | `12` | Bounded acquire/release churn cycles (2..64) |
-| `TEST_DHCPV4_FUZZ_CASES` | `24` | Deterministic malformed corpus size (5..128) |
+| `TEST_DHCPV4_FUZZ_CASES` | `40` | Deterministic malformed corpus size (40..128; 40 covers every message/mutation pair) |
 | `TEST_DHCPV4_PING_CHECK_ADDRESS` | empty | Candidate address used only by the isolated server ping-check runner |
 | `DHCPV4_OVERLAP_ORDER` | `primary-first` | Kea fixture order: `primary-first` or `specific-first` |
 | `TEST_DHCPV4_OVERLAP_EXPECTED_POOL_START` | empty | First address expected from the selected scope in an isolated overlap run |

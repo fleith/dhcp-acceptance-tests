@@ -63,7 +63,7 @@
     {
       "id": "GAP-DHCPV6-RESERVED-IID-POOLS",
       "title": "Allocator pools containing reserved IPv6 interface identifiers",
-      "status": "partial",
+      "status": "covered",
       "mode": "orchestrated",
       "evidence": [
         "features/dhcpv6_remaining_requirements.feature",
@@ -140,10 +140,15 @@
     {
       "id": "GAP-MALFORMED",
       "title": "Malformed packet corpus and bounded deterministic fuzzing",
-      "status": "partial",
+      "status": "covered",
       "mode": "focused",
-      "evidence": ["features/dhcpv4_conformance.feature"],
-      "tags": ["@malformed", "@bounded_fuzz", "@focused_robustness"]
+      "evidence": [
+        "features/dhcpv4_conformance.feature",
+        "features/dhcpv6_malformed_corpus.feature",
+        "features/dhcpv6_transaction_validation.feature"
+      ],
+      "tags": ["@malformed", "@bounded_fuzz", "@focused_robustness"],
+      "notes": "Deterministic matrices cover all DHCPv4 client message families and all DHCPv6 stateful/stateless client message families. Strict reference divergences remain explicit for Kea trailing-option and malformed INFORMATION-REQUEST handling."
     },
     {
       "id": "GAP-CAPACITY",

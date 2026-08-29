@@ -64,10 +64,26 @@ Feature: DHCPv4 transaction safety and configuration behavior
     Then the class-specific domain option is present in OFFER and ACK
 
   @negative @malformed @bounded_fuzz @focused_robustness
-  Scenario: A bounded malformed corpus cannot create a lease or poison the server
-    Given the DHCP server is running
+  Scenario: Every DHCPv4 client message family rejects bounded wire mutations safely
+    Given a DHCPv4 client holds an active lease for malformed mutation checks
     When a deterministic corpus of malformed DHCPv4 messages is sent
-    Then no malformed DHCPv4 transaction receives a DHCPACK
+    Then no malformed DHCPv4 transaction receives an OFFER ACK or NAK
+    And the DHCPv4 lease targeted by malformed messages remains renewable
+    And a valid DHCPv4 client still completes DORA
+
+  @negative @malformed @bounded_fuzz @focused_robustness @reference_malformed_option_tail_divergence
+  Scenario: Malformed trailing options invalidate every DHCPv4 client message family
+    Given a DHCPv4 client holds an active lease for malformed mutation checks
+    When every DHCPv4 message family carries malformed trailing option metadata
+    Then no malformed trailing DHCPv4 option is accepted
+    And the DHCPv4 lease targeted by malformed messages remains renewable
+
+  @kea @known_divergence @non_compliance @malformed @bounded_fuzz @malformed_option_tail_divergence
+  Scenario: Kea processes a valid DHCPv4 prefix before malformed trailing options
+    Given a DHCPv4 client holds an active lease for malformed mutation checks
+    When every DHCPv4 message family carries malformed trailing option metadata
+    Then the reference server exposes its malformed trailing-option behavior
+    And malformed trailing metadata can invalidate the targeted DHCPv4 binding
     And a valid DHCPv4 client still completes DORA
 
   @churn @focused_robustness
