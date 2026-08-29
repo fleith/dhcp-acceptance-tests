@@ -300,10 +300,18 @@ def step_then_unknown_rebind_creates_binding(context):
     reply = replies[0]
     client_id = reply.getlayer(_cls("DHCP6OptClientId"))
     ia_na = reply.getlayer(_cls("DHCP6OptIA_NA"))
-    ia_address = reply.getlayer(_cls("DHCP6OptIAAddress"))
-    leased_ip = getattr(ia_address, "addr", None) if ia_address else None
     assert _duids_equal(getattr(client_id, "duid", None), _client_duid())
     assert getattr(ia_na, "iaid", None) == _iaid()
+    active_addresses = [
+        option
+        for option in _nested_options(ia_na, _cls("DHCP6OptIAAddress"))
+        if int(getattr(option, "validlft", 0)) > 0
+    ]
+    assert active_addresses, (
+        "Configured server returned no positive-lifetime binding for unknown REBIND"
+    )
+    ia_address = active_addresses[0]
+    leased_ip = getattr(ia_address, "addr", None)
     assert leased_ip and ipaddress.ip_address(leased_ip) in ipaddress.ip_network(SUBNET_V6)
     assert ia_address.preflft > 0 and ia_address.validlft >= ia_address.preflft
     context_storage_v6.update(
