@@ -11,16 +11,10 @@ Feature: DHCPv6 IA_NA ownership protection (RFC 9915)
     When the client sends a DHCPv6 RENEW message
     Then the server responds with a DHCPv6 REPLY extending the lease
 
-  @reference_forged_rebind_ownership_divergence
+  @rfc9915_rebind_ownership
   Scenario: Forged REBIND cannot claim another client's active IA_NA
     Given a client holds a DHCPv6 lease from the server
     When a different DUID sends a DHCPv6 REBIND for the active IA_NA
     Then the forged IA_NA response does not assign the victim address
     When the client sends a DHCPv6 RENEW message
     Then the server responds with a DHCPv6 REPLY extending the lease
-
-  @known_divergence @non_compliance
-  Scenario: Reference servers reassign an active IA_NA during forged REBIND
-    Given a client holds a DHCPv6 lease from the server
-    When a different DUID sends a DHCPv6 REBIND for the active IA_NA
-    Then the reference response assigns the victim address to the attacker

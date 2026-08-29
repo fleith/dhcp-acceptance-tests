@@ -297,12 +297,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Verify reserved-IID allocation and REQUEST regeneration
+      - name: Verify reserved-IID allocation, REQUEST regeneration, and REBIND ownership
         id: focused-rfc9915-tests
         run: |
           bash ./run_dhcpv6_reserved_iid_tests.sh \
             --server-version ${{ matrix.server_version }}
           bash ./run_dhcpv6_request_regeneration_tests.sh \
+            --server-version ${{ matrix.server_version }}
+          bash ./run_dhcpv6_rebind_ownership_tests.sh \
             --server-version ${{ matrix.server_version }}
 
       - name: Tear down focused DHCPv6 RFC 9915 fixtures
@@ -312,6 +314,8 @@ jobs:
             -f docker-compose.ipv6.yml -f docker-compose.ipv6-reserved-iid.yml down -v
           docker compose -f docker-compose.yml -f docker-compose.kea.yml \
             -f docker-compose.ipv6.yml -f docker-compose.ipv6-request-observability.yml down -v
+          docker compose -f docker-compose.yml -f docker-compose.kea.yml \
+            -f docker-compose.ipv6.yml down -v
 
       - name: Publish focused DHCPv6 RFC 9915 summary
         if: always()
