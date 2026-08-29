@@ -12,7 +12,7 @@ Feature: Remaining DHCPv6 server requirements from RFC 9915
     Then the client receives a DHCPv6 ADVERTISE from the server
 
   @orchestrated @rfc9915_reserved_iid_pool @negative @reference_reserved_iid_pool_divergence
-  Scenario: Allocator skips reserved IIDs that are present in configured pools
+  Scenario: Allocator skips every registered reserved-IID range present in configured pools
     Given the DHCPv6 server is running
     When distinct clients exhaust the reserved-IID boundary pools
     Then every allocatable boundary address is committed exactly once
@@ -28,7 +28,7 @@ Feature: Remaining DHCPv6 server requirements from RFC 9915
   Scenario: Default address allocation avoids a simple contiguous IID sequence
     Given the DHCPv6 server is running
     When several distinct clients request DHCPv6 addresses
-    Then their generated IPv6 interface identifiers are not a contiguous sequence
+    Then their generated IPv6 interface identifiers resist simple sequence predictors
 
   @kea @known_divergence @non_compliance @rfc9915_address_generation_divergence
   Scenario: Kea reference allocator exposes a simple contiguous IID sequence
@@ -36,25 +36,36 @@ Feature: Remaining DHCPv6 server requirements from RFC 9915
     When several distinct clients request DHCPv6 addresses
     Then their generated IPv6 interface identifiers form a contiguous sequence
 
-  @requires_dhcpv6_rapid_commit
-  Scenario: Configured server creates an unknown binding during REBIND
+  @requires_dhcpv6_rapid_commit @rfc9915_rebind_policy
+  Scenario Outline: Rapid Commit policy creates every requested unknown REBIND resource
     Given the DHCPv6 server is running
-    When an unknown client sends a DHCPv6 REBIND with an on-link address hint
-    Then a matching DHCPv6 REPLY creates a renewable binding
-    When the client sends a DHCPv6 RENEW message
-    Then the server responds with a DHCPv6 REPLY extending the lease
+    When an unknown client sends a DHCPv6 REBIND containing <resources>
+    Then a matching DHCPv6 REPLY creates every requested binding
+    And every created unknown REBIND resource renews successfully
+
+    Examples:
+      | resources       |
+      | IA_NA           |
+      | IA_PD           |
+      | IA_NA and IA_PD |
 
   @orchestrated @rfc9915_rebind_disabled @negative @reference_disabled_rebind_policy_divergence
-  Scenario: Disabled binding creation returns NoBinding for unknown REBIND
+  Scenario Outline: Disabled binding creation returns per-IA NoBinding for unknown REBIND
     Given the DHCPv6 server is running
-    When an unknown client sends a DHCPv6 REBIND with an on-link address hint
-    Then the unknown REBIND reply reports NoBinding without assigning an address
+    When an unknown client sends a DHCPv6 REBIND containing <resources>
+    Then every unknown IA reports NoBinding without assigning a resource
+
+    Examples:
+      | resources       |
+      | IA_NA           |
+      | IA_PD           |
+      | IA_NA and IA_PD |
 
   @orchestrated @rfc9915_rebind_disabled @known_divergence @non_compliance
   Scenario: Reference servers omit NoBinding when Rapid Commit is disabled
     Given the DHCPv6 server is running
-    When an unknown client sends a DHCPv6 REBIND with an on-link address hint
-    Then the reference unknown REBIND reply omits the required NoBinding status
+    When an unknown client sends a DHCPv6 REBIND containing IA_NA and IA_PD
+    Then the reference unknown REBIND reply omits a required per-IA NoBinding status
 
   @rfc9915_preference
   Scenario: DHCPv6 server advertises the configured effective preference

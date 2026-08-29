@@ -29,11 +29,11 @@ needed before making a complete claim.
 | DHCPv6 Interface-ID policy | `bash ./run_dhcpv6_interface_id_tests.sh [--server-version kea-lts\|kea-stable]` | Exact opaque Option 18 pool selection and lease commitment, non-exact denial, closest-client nested-relay scope, and byte preservation |
 | DHCPv6 authenticated Reconfigure | `TEST_RECONFIGURE_TRIGGER_COMMAND=<adapter> bash ./run_dhcpv6_reconfigure_tests.sh --compose-file <target-override>` | RKAP key negotiation, complete HMAC validation, opt-out, tamper/replay rejection, exact metadata, and post-trigger RENEW |
 | DHCPv6 Preference | `bash ./run_dhcpv6_preference_tests.sh --server <server>` | Configured nonzero RFC 9915 server Preference, complementing the zero-default required check |
-| DHCPv6 REBIND policy | `bash ./run_dhcpv6_rebind_policy_tests.sh --server <server>` | Documents the ISC/Kea omission of NoBinding with Rapid Commit disabled; strict target-service assertion remains available separately |
-| DHCPv6 reserved-IID pools | `bash ./run_dhcpv6_reserved_iid_tests.sh` | Exhausts pools containing representative RFC-reserved IIDs and records Kea's reference divergence |
+| DHCPv6 REBIND policy | `bash ./run_dhcpv6_rebind_policy_tests.sh --server <server>` | Exercises per-IA NoBinding for unknown IA_NA, IA_PD, and combined REBIND with Rapid Commit disabled; known ISC/Kea failures remain explicit |
+| DHCPv6 reserved-IID pools | `bash ./run_dhcpv6_reserved_iid_tests.sh` | Exhausts start/interior/end candidates from every current IANA reserved-IID range, with safe boundary neighbors, and records Kea's reference divergence |
 | DHCPv6 REQUEST regeneration | `bash ./run_dhcpv6_request_regeneration_tests.sh [--server-version kea-lts\|kea-stable]` | Bundled Kea adapter combines identical wire retransmission with exact-DUID, exact-transaction lease allocation/reuse event deltas; targets may replace the adapter and topology |
 | DHCPv6 REBIND ownership | `bash ./run_dhcpv6_rebind_ownership_tests.sh [--server-version kea-lts\|kea-stable]` | Address-only, prefix-only, both cross-type, and fully mixed ownership transactions; exact owned-resource preservation, zero/omitted forged resources, attacker renewal of every positive result, and renewal by both legitimate owners |
-| DHCPv6 generation lifecycle | Supply the generation topology variables and run `bash ./run_dhcpv6_generation_lifecycle_tests.sh --compose-file <target-override>` | Two-subnet uniqueness, repeated persistent restarts, collision avoidance, exhaustion, release, and reuse |
+| DHCPv6 generation lifecycle | Supply the generation topology variables and run `bash ./run_dhcpv6_generation_lifecycle_tests.sh --compose-file <target-override>` | Two-subnet simple-predictor rejection, repeated persistent restarts, allocation-fingerprint changes, collision avoidance, exhaustion, release, and reuse |
 | DHCPv4 offer-hold boundary | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS=<seconds> bash ./run_offer_hold_boundary_tests.sh --compose-file <target-override>` | Concurrent contender waves immediately before and after the configured expiry boundary |
 | Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
 | Lifecycle | `bash ./run_lifecycle_tests.sh --server <server>` | Graceful restart, SIGKILL recovery, and persistent binding ownership |
@@ -117,12 +117,12 @@ uses the closest-client relay while every RELAY-REPLY layer preserves its own
 opaque bytes through ADVERTISE and committed REPLY.
 
 The reserved-IID runner changes allocator topology rather than relying only on
-client hints. Its three tiny pools contain subnet-router anycast, modified
-EUI-64, and highest-128 boundary values alongside known-safe addresses. The
-strict target assertion requires the exact safe set after exhaustion. Kea
-3.2.0 allocates reserved values from these explicit pools, so the reference
-profile records that result as a known divergence instead of treating it as a
-passing implementation.
+client hints. Single-address pools contain start, interior, and end values from
+every range in the current IANA IPv6 Interface Identifiers registry, plus safe
+neighbors immediately outside the ranges. The strict target assertion requires
+the exact safe set after exhausting every candidate. Kea allocates reserved
+values from these explicit pools, so the reference profile records that result
+as a known divergence instead of treating it as a passing implementation.
 
 ## Capability adapters
 
@@ -193,12 +193,12 @@ scenarios or an explicit gap. Its CSV source is
 [`rfc-requirements.csv`](rfc-requirements.csv), and profile validation checks
 that every evidence path and scenario name remains valid.
 
-The matrix is deliberately honest about strength: a successful exchange is
-only `partial` when it does not observe the whole normative clause, and
-capability-gated requirements remain `conditional` until executed for the
-target product. Open `gap`, `partial`, and unexecuted `conditional` rows mean
-`GAP-RFC-TRACEABILITY` remains `partial`; the matrix makes the remaining work
-enumerable rather than implying that scenario-level RFC labels are complete.
+The matrix currently contains 80 fully asserted rows, no partial or gap rows,
+and two capability-dependent rows. A `covered` row means the complete strict
+assertion exists; it does not mean every bundled reference server passes it.
+Known failures are explicit noncompliance scenarios. `GAP-RFC-TRACEABILITY` is
+therefore covered as a mapping task, while the two conditional capabilities
+still require execution and applicability decisions for the target product.
 
 A release can accurately say that it **passes this repository's named DHCP
 acceptance profile** after all applicable required, focused, lifecycle, safety,

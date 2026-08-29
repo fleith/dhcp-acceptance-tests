@@ -1398,7 +1398,9 @@ def step_then_same_ip_for_client_id(context):
 
 # RFC 4702 Client FQDN option (option 81) carried in both DISCOVER and REQUEST.
 # S asks the server to perform the forward update; E selects canonical DNS wire
-# labels instead of the legacy ASCII form. Client RCODE fields are always zero.
+# labels instead of the legacy ASCII form. The RCODE-focused scenario varies
+# both deprecated client input fields to prove the server overwrites rather
+# than echoes them.
 _RFC4702_FQDN_LABEL = b'testclient'
 _RFC4702_FQDN_TEXT = b'testclient.example.com'
 _RFC4702_SUFFIX = os.getenv(
@@ -1409,12 +1411,15 @@ _RFC4702_OPTION81_NAME = f'fqdn-wins.{_RFC4702_SUFFIX}'
 _RFC4702_CONFLICTING_HOST_NAME = b'host-name-loses'
 
 
-def _rfc4702_client_option(encoding):
+def _rfc4702_client_option(encoding, rcode1=0, rcode2=0):
+    assert 0 <= int(rcode1) <= 255 and 0 <= int(rcode2) <= 255
+    header = bytes((0x05 if encoding.strip().lower() == 'dns' else 0x01,
+                    int(rcode1), int(rcode2)))
     normalized = encoding.strip().lower()
     if normalized == 'dns':
-        return b'\x05\x00\x00\x0atestclient\x07example\x03com\x00'
+        return header + b'\x0atestclient\x07example\x03com\x00'
     if normalized == 'ascii':
-        return b'\x01\x00\x00' + _RFC4702_FQDN_TEXT
+        return header + _RFC4702_FQDN_TEXT
     raise AssertionError(f"Unsupported RFC 4702 encoding {encoding!r}")
 
 
@@ -1526,6 +1531,17 @@ def step_when_dora_with_fqdn_encoding(context, encoding):
     fqdn_option = _rfc4702_client_option(encoding)
     _rfc4702_exchange(fqdn_option)
     context_storage['rfc4702_encoding'] = encoding.strip().lower()
+
+
+@when(
+    'a client completes a DORA exchange using {encoding} Client FQDN encoding '
+    'with input RCODEs {rcode1} and {rcode2}'
+)
+def step_when_dora_with_fqdn_rcodes(context, encoding, rcode1, rcode2):
+    input_rcodes = (int(rcode1), int(rcode2))
+    _rfc4702_exchange(_rfc4702_client_option(encoding, *input_rcodes))
+    context_storage['rfc4702_encoding'] = encoding.strip().lower()
+    context_storage['rfc4702_input_rcodes'] = input_rcodes
 
 
 @when('a client completes DORA with an unsupported ASCII Client FQDN option')
