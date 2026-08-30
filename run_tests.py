@@ -41,6 +41,18 @@ def get_interface_info(iface, family):
     raise ValueError(f"Unsupported IP family: {family}")
 
 
+def get_interface_for_address(address, family=4):
+    if not address:
+        raise RuntimeError("Automatic interface selection requires an address")
+    family_flag = '-4' if family == 4 else '-6'
+    out = subprocess.check_output(['ip', family_flag, '-o', 'addr', 'show']).decode()
+    for line in out.splitlines():
+        fields = line.split()
+        if len(fields) >= 4 and fields[3].split('/')[0] == address:
+            return fields[1]
+    raise RuntimeError(f"No interface owns configured address {address}")
+
+
 def explicitly_requests_known_divergence(args):
     return any('@known_divergence' in arg for arg in args)
 
@@ -64,8 +76,14 @@ def explicitly_requests_capabilities(args):
     return any('@capability' in arg or '@requires_' in arg for arg in args)
 
 
-iface = os.getenv('TEST_INTERFACE', 'eth0')
+iface = os.getenv('TEST_INTERFACE', 'eth0').strip()
 ip_version = os.getenv('TEST_IP_VERSION', 'v4').strip().lower()
+
+if iface == 'auto':
+    family = 6 if ip_version == 'v6' else 4
+    iface = get_interface_for_address(
+        os.getenv('TEST_INTERFACE_ADDRESS', '').strip(), family
+    )
 
 if ip_version == 'v4':
     iface_ip, subnet = get_interface_info(iface, 4)
@@ -81,7 +99,12 @@ else:
     raise RuntimeError(f"Unsupported TEST_IP_VERSION='{ip_version}'. Use v4, v6, or dual.")
 
 env = os.environ.copy()
-env.setdefault('TEST_INTERFACE', iface)
+env['TEST_INTERFACE'] = iface
+
+if env.get('TEST_SECOND_INTERFACE', '').strip() == 'auto':
+    env['TEST_SECOND_INTERFACE'] = get_interface_for_address(
+        env.get('TEST_SECOND_INTERFACE_ADDRESS', '').strip(), 4
+    )
 
 if ip_version == 'v4':
     env.setdefault('TEST_SERVER_IP', server_ip)

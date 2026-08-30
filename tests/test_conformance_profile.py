@@ -176,9 +176,14 @@ class ConformanceProfileTests(unittest.TestCase):
         self.assertIn("KEA_HA_SERVER_NAME: server2", ha)
 
         multi = MULTI_INTERFACE_TOPOLOGY.read_text(encoding="utf-8")
-        self.assertIn("interface_name: eth0", multi)
-        self.assertIn("interface_name: eth1", multi)
+        self.assertNotIn("interface_name:", multi)
+        self.assertIn("TEST_INTERFACE: auto", multi)
+        self.assertIn("TEST_SECOND_INTERFACE: auto", multi)
+        self.assertIn("TEST_SECOND_INTERFACE_ADDRESS: 172.30.0.3", multi)
         self.assertIn("subnet: 172.30.0.0/24", multi)
+
+        ha = HA_TOPOLOGY.read_text(encoding="utf-8")
+        self.assertNotIn("interface_name:", ha)
 
         kea_entrypoint = (ROOT / "kea" / "entrypoint.sh").read_text(
             encoding="utf-8"

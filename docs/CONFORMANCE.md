@@ -160,7 +160,7 @@ reported as a pass.
 | `dhcpv6_request_observability` | `TEST_DHCPV6_REQUEST_COUNTER_COMMAND`, which prints the cumulative number of matching REQUEST-processing events |
 | `dhcpv6_generation_lifecycle` | `TEST_DHCPV6_GENERATION_RESTART_COMMAND`, two served subnets, a usable relay link address, and exact per-subnet pool capacity |
 | `offer_hold_expiry` | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS`, set to the target's configured offer-hold duration; the bundled Kea runner configures both server and test to two seconds by default |
-| `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP`; the bundled topology pins `eth0` and `eth1` to separate `/24` networks |
+| `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP`; the bundled topology discovers both interfaces from their static addresses on separate `/24` networks |
 | `authenticated_reconfigure` | `TEST_RECONFIGURE_TRIGGER_COMMAND`; optionally `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` for a second product-specific validation |
 | `storage_fault` | `TEST_STORAGE_FAIL_COMMAND` and `TEST_STORAGE_RECOVER_COMMAND` for an external target; the bundled reference fixtures use `run_storage_fault_tests.sh` |
 

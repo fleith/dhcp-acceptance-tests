@@ -2,6 +2,28 @@
 set -e
 
 IFACE="${1:-eth0}"
+DHCPV4_PRIMARY_INTERFACE_ADDRESS="${DHCPV4_PRIMARY_INTERFACE_ADDRESS:-}"
+
+interface_for_ipv4_address() {
+    _target=$1
+    ip -o -4 addr show | awk -v target="$_target" '
+        {
+            split($4, address, "/")
+            if (address[1] == target) {
+                print $2
+                exit
+            }
+        }
+    '
+}
+
+if [ "$IFACE" = "auto" ]; then
+    IFACE=$(interface_for_ipv4_address "$DHCPV4_PRIMARY_INTERFACE_ADDRESS")
+    if [ -z "$IFACE" ]; then
+        echo "[kea] ERROR: Cannot resolve the primary interface for $DHCPV4_PRIMARY_INTERFACE_ADDRESS" >&2
+        exit 1
+    fi
+fi
 
 IP_PREFIX=$(ip -4 addr show "$IFACE" | awk '/inet / {print $2; exit}')
 if [ -z "$IP_PREFIX" ]; then
@@ -38,6 +60,7 @@ DHCPV4_PING_CHECK_PEER_MAC="${DHCPV4_PING_CHECK_PEER_MAC:-02:42:ac:1d:00:03}"
 DHCPV4_OFFER_LIFETIME="${DHCPV4_OFFER_LIFETIME:-0}"
 DHCPV4_CLASS_DOMAIN="${DHCPV4_CLASS_DOMAIN:-class.acceptance.test}"
 DHCPV4_SECOND_INTERFACE="${DHCPV4_SECOND_INTERFACE:-}"
+DHCPV4_SECOND_INTERFACE_ADDRESS="${DHCPV4_SECOND_INTERFACE_ADDRESS:-}"
 DHCPV4_SECOND_SUBNET="${DHCPV4_SECOND_SUBNET:-}"
 DHCPV4_SECOND_POOL_START="${DHCPV4_SECOND_POOL_START:-}"
 DHCPV4_SECOND_POOL_END="${DHCPV4_SECOND_POOL_END:-}"
@@ -192,6 +215,13 @@ if [ -n "$DHCPV4_SECOND_INTERFACE" ] || [ -n "$DHCPV4_SECOND_SUBNET" ]; then
        [ -z "$DHCPV4_SECOND_POOL_START" ] || [ -z "$DHCPV4_SECOND_POOL_END" ]; then
         echo "[kea] ERROR: second-interface profile requires interface, subnet, and pool endpoints" >&2
         exit 1
+    fi
+    if [ "$DHCPV4_SECOND_INTERFACE" = "auto" ]; then
+        DHCPV4_SECOND_INTERFACE=$(interface_for_ipv4_address "$DHCPV4_SECOND_INTERFACE_ADDRESS")
+        if [ -z "$DHCPV4_SECOND_INTERFACE" ]; then
+            echo "[kea] ERROR: Cannot resolve the second interface for $DHCPV4_SECOND_INTERFACE_ADDRESS" >&2
+            exit 1
+        fi
     fi
     SECOND_IP_PREFIX=$(ip -4 addr show "$DHCPV4_SECOND_INTERFACE" | awk '/inet / {print $2; exit}')
     if [ -z "$SECOND_IP_PREFIX" ]; then
