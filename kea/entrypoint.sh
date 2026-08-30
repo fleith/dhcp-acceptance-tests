@@ -79,6 +79,11 @@ case "$DHCPV4_OFFER_LIFETIME" in
         ;;
 esac
 
+OFFER_LIFETIME_CONFIG=""
+if [ "$DHCPV4_OFFER_LIFETIME" != "0" ]; then
+    OFFER_LIFETIME_CONFIG="\"offer-lifetime\": $DHCPV4_OFFER_LIFETIME,"
+fi
+
 IFS=. read -r i1 i2 i3 i4 << EOF
 $IP
 EOF
@@ -364,7 +369,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
     "renew-timer": 60,
     "rebind-timer": 105,
     "valid-lifetime": 120,
-    "offer-lifetime": $DHCPV4_OFFER_LIFETIME,
+    $OFFER_LIFETIME_CONFIG
     "subnet4": [
       $OVERLAP_SUBNET_BEFORE
       {

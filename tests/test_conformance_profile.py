@@ -156,6 +156,8 @@ class ConformanceProfileTests(unittest.TestCase):
         ):
             self.assertIn(runner, job)
 
+        self.assertIn("chmod 0777 test-state", job)
+
         for identifier in (
             "GAP-DHCPV4-OFFER-HOLD-BOUNDARY",
             "GAP-RELOAD",
@@ -177,6 +179,11 @@ class ConformanceProfileTests(unittest.TestCase):
         self.assertIn("interface_name: eth0", multi)
         self.assertIn("interface_name: eth1", multi)
         self.assertIn("subnet: 172.30.0.0/24", multi)
+
+        kea_entrypoint = (ROOT / "kea" / "entrypoint.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('if [ "$DHCPV4_OFFER_LIFETIME" != "0" ]', kea_entrypoint)
 
     def test_rfc_traceability_profile_is_complete(self):
         traceability = next(

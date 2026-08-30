@@ -342,6 +342,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Prepare operational action directory
+        run: |
+          mkdir -p test-state
+          chmod 0777 test-state
+
       - name: Verify offer expiry, reload, multiple interfaces, and HA
         id: operational-tests
         run: |
