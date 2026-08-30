@@ -15,6 +15,7 @@ Feature: Optional DHCP service capabilities
     Given an active DHCPv4 binding exists before HA failover
     When the HA adapter isolates the active primary
     Then the binding can be rebound through the remaining HA peer
+    And the rebinding response comes from a different HA peer
     And the remaining HA peer never allocates that active address to another client
 
   @requires_ddns
@@ -43,6 +44,20 @@ Feature: Optional DHCP service capabilities
     Given the test client has a configured second DHCPv4 interface
     When a DHCPv4 client acquires a lease through the second interface
     Then the second-interface lease belongs to its configured subnet
+
+  @requires_multi_interface
+  Scenario: Direct clients on two interfaces remain in independent lease scopes
+    Given the test client has a configured second DHCPv4 interface
+    When DHCPv4 clients acquire leases through both configured interfaces
+    Then the primary-interface lease belongs to the primary subnet
+    And the second-interface lease belongs to its configured subnet
+
+  @negative @requires_multi_interface
+  Scenario: A wrong-subnet hint cannot cross a direct interface boundary
+    Given the test client has a configured second DHCPv4 interface
+    When a client on the second interface hints an address from the primary subnet
+    Then the second interface never offers an address from the primary subnet
+    And the second-interface client can still commit its local candidate
 
   @requires_storage_fault
   Scenario: A runtime lease-storage failure prevents an unrecorded commit

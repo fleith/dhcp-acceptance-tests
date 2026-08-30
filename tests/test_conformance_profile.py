@@ -9,6 +9,8 @@ CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 RESERVED_IID_TOPOLOGY = ROOT / "docker-compose.ipv6-reserved-iid.yml"
 CAPACITY_TOPOLOGY = ROOT / "docker-compose.capacity.yml"
 CAPACITY_RUNNER = ROOT / "run_capacity_tests.sh"
+HA_TOPOLOGY = ROOT / "docker-compose.ha.yml"
+MULTI_INTERFACE_TOPOLOGY = ROOT / "docker-compose.multi-interface.yml"
 
 
 class ConformanceProfileTests(unittest.TestCase):
@@ -139,6 +141,42 @@ class ConformanceProfileTests(unittest.TestCase):
         self.assertIn("  endurance)", runner)
         self.assertIn("TEST_DHCPV4_CAPACITY_DURATION_SECONDS", runner)
         self.assertIn("subnet: 172.29.0.0/20", topology)
+
+    def test_operational_capabilities_have_bundled_kea_execution(self):
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        start = workflow.index("  ipv4-operational-capabilities:")
+        end = workflow.index("\n  focused-robustness:", start)
+        job = workflow[start:end]
+
+        for runner in (
+            "run_offer_hold_boundary_tests.sh",
+            "run_reload_tests.sh",
+            "run_multi_interface_tests.sh",
+            "run_ha_tests.sh",
+        ):
+            self.assertIn(runner, job)
+
+        for identifier in (
+            "GAP-DHCPV4-OFFER-HOLD-BOUNDARY",
+            "GAP-RELOAD",
+            "GAP-HA",
+            "GAP-MULTI-INTERFACE",
+        ):
+            row = next(
+                row for row in self.profile["coverage"] if row["id"] == identifier
+            )
+            self.assertEqual(row["status"], "covered")
+            self.assertEqual(row["mode"], "orchestrated")
+
+        ha = HA_TOPOLOGY.read_text(encoding="utf-8")
+        self.assertIn("dhcp-secondary:", ha)
+        self.assertIn("KEA_HA_SERVER_NAME: server1", ha)
+        self.assertIn("KEA_HA_SERVER_NAME: server2", ha)
+
+        multi = MULTI_INTERFACE_TOPOLOGY.read_text(encoding="utf-8")
+        self.assertIn("interface_name: eth0", multi)
+        self.assertIn("interface_name: eth1", multi)
+        self.assertIn("subnet: 172.30.0.0/24", multi)
 
     def test_rfc_traceability_profile_is_complete(self):
         traceability = next(

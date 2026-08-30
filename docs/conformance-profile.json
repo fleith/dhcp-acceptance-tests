@@ -52,10 +52,11 @@
     {
       "id": "GAP-DHCPV4-OFFER-HOLD-BOUNDARY",
       "title": "Concurrent DHCPv4 offer ownership at the configured expiry boundary",
-      "status": "conditional",
-      "mode": "capability",
+      "status": "covered",
+      "mode": "orchestrated",
       "evidence": [
         "features/dhcpv4_conformance.feature",
+        "kea/entrypoint.sh",
         "run_offer_hold_boundary_tests.sh"
       ],
       "tags": ["@requires_offer_hold_expiry", "@offer_hold_boundary"]
@@ -132,9 +133,13 @@
     {
       "id": "GAP-RELOAD",
       "title": "Configuration reload without losing active bindings",
-      "status": "conditional",
-      "mode": "capability",
-      "evidence": ["features/optional_service_capabilities.feature"],
+      "status": "covered",
+      "mode": "orchestrated",
+      "evidence": [
+        "features/optional_service_capabilities.feature",
+        "adapters/orchestrated_action.py",
+        "run_reload_tests.sh"
+      ],
       "tags": ["@requires_reload"]
     },
     {
@@ -208,9 +213,13 @@
     {
       "id": "GAP-HA",
       "title": "HA or failover binding continuity",
-      "status": "conditional",
-      "mode": "capability",
-      "evidence": ["features/optional_service_capabilities.feature"],
+      "status": "covered",
+      "mode": "orchestrated",
+      "evidence": [
+        "features/optional_service_capabilities.feature",
+        "docker-compose.ha.yml",
+        "run_ha_tests.sh"
+      ],
       "tags": ["@requires_ha"]
     },
     {
@@ -232,9 +241,13 @@
     {
       "id": "GAP-MULTI-INTERFACE",
       "title": "Direct client traffic on a second interface and subnet",
-      "status": "conditional",
-      "mode": "capability",
-      "evidence": ["features/optional_service_capabilities.feature"],
+      "status": "covered",
+      "mode": "orchestrated",
+      "evidence": [
+        "features/optional_service_capabilities.feature",
+        "docker-compose.multi-interface.yml",
+        "run_multi_interface_tests.sh"
+      ],
       "tags": ["@requires_multi_interface"]
     },
     {

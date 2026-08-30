@@ -124,9 +124,17 @@ TEST_DHCPV6_GENERATION_RELAY_LINK_ADDRESS=fd00:30::1 \
 TEST_DHCPV6_GENERATION_POOL_CAPACITY_PER_SUBNET=24 \
   bash ./run_dhcpv6_generation_lifecycle_tests.sh --compose-file docker-compose.target.yml
 
-# Target-service DHCPv4 offer hold immediately before and after exact expiry
-TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS=30 \
-  bash ./run_offer_hold_boundary_tests.sh --compose-file docker-compose.target.yml
+# Bundled Kea offer hold immediately before and after exact expiry
+bash ./run_offer_hold_boundary_tests.sh
+
+# Live SIGHUP policy reload with active-lease continuity
+bash ./run_reload_tests.sh
+
+# Two-interface subnet selection and wrong-scope isolation
+bash ./run_multi_interface_tests.sh
+
+# Two-server Kea hot-standby replication and automatic failover
+bash ./run_ha_tests.sh
 
 # RFC 9915 authenticated Reconfigure against a target-service adapter
 TEST_RECONFIGURE_TRIGGER_COMMAND=/app/adapter/trigger-reconfigure \
@@ -229,6 +237,7 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_CONCURRENT_CLIENTS` | `8` | Bounded number of simultaneous DHCPv4 clients (2..32) |
 | `TEST_DHCPV4_BATCH_DEADLINE` | `15` | Maximum seconds for the bounded concurrent batch |
 | `TEST_DHCPV4_OFFER_HOLD_SECONDS` | `0.75` | Minimum observation window during which competing clients must not receive an unselected offer |
+| `DHCPV4_OFFER_LIFETIME` | `0` | Kea persisted-offer lifetime; the isolated expiry runner sets this to two seconds |
 | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS` | `0` | Target's exact configured offer-hold duration for pre/post-boundary testing |
 | `TEST_DHCPV4_OFFER_HOLD_CONTENDERS` | `4` | Concurrent contenders used on each side of the offer-hold expiry boundary |
 | `TEST_DHCPV4_CHURN_CYCLES` | `12` | Bounded acquire/release churn cycles (2..64) |
@@ -287,7 +296,7 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 Server-focused coverage spans 12 RFCs: the existing eight plus RFC 3442,
 RFC 4361, RFC 4704, and RFC 8925.
 
-- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling with exact administrative-log evidence, byte-identical initialization-parameter reuse after release, timed multi-client offer-hold enforcement, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate. A target profile adds concurrent contender waves immediately before and after the configured offer-hold expiry and permits exactly one post-expiry winner. ISC DHCP 4.4.1, ISC DHCP 4.4.3-P1, and Kea references reoffer an unselected address; that behavior is captured as a known divergence while external targets run the strict checks.
+- **RFC 2131**: DORA flow, release, renew, rebinding edge cases, INIT-REBOOT, INFORM (including raw omission of lease timing options), NAK/DECLINE handling with exact administrative-log evidence, byte-identical initialization-parameter reuse after release, timed multi-client offer-hold enforcement, plus isolated server-side ICMP probing that offers a silent candidate and withholds a responding candidate. The bundled Kea expiry profile sends concurrent contender waves on both sides of its exact two-second boundary and permits exactly one post-expiry winner. Default ISC DHCP and Kea configurations that do not retain offers remain recorded as explicit divergences.
 - **RFC 2131 pool capacity**: a dedicated bounded run exhausts the DHCPv4 pool, verifies that an additional client receives no offer, releases one lease, and proves the waiting client can acquire that address.
 - **RFC 2132**: required network options, raw Subnet Mask/Router ordering, multi-address DNS encoding, and exact lease-time option length alongside T1/T2 timer validation.
 - **RFC 3011**: default-disabled Subnet Selection posture, Option 118 acceptance, and the alternate-subnet selection path with a conflicting primary-pool address hint plus exact response echo on Kea in the multi-subnet Docker topology.
@@ -338,12 +347,12 @@ For backends that accept overlapping subnets, the isolated Kea profile also
 checks that both declaration orders retain the reference selection result,
 OFFER-to-ACK scope consistency, scope-specific options, and rejection of
 requested-address hints from the non-selected pool.
-Reload, HA, a second direct interface, and authenticated DHCPv6 Reconfigure
-have executable capability-gated scenarios because they require a
-product-specific topology or control-plane adapter. External services may use
-the DDNS and storage-fault capability adapters, while ISC DHCP runs the bundled
-authoritative DNS profile and both reference families run the bundled isolated
-storage profile in CI. The machine-readable index is
+Reload, HA, and a second direct interface have bundled Kea 3.2 profiles in CI,
+while authenticated DHCPv6 Reconfigure remains capability-gated because it
+requires a product-specific control-plane adapter. External services may use
+the same capability adapters and substitute their own topology. ISC DHCP runs
+the bundled authoritative DNS profile and both reference families run the
+bundled isolated storage profile in CI. The machine-readable index is
 [`docs/conformance-profile.json`](docs/conformance-profile.json).
 The statement-level [RFC MUST/SHOULD traceability matrix](docs/RFC_REQUIREMENTS.md)
 maps each inventoried requirement to an exact scenario or explicit gap; its
@@ -430,6 +439,8 @@ dhcp-acceptance-tests/
 |-- docker-compose.ipv6-ddns.yml
 |-- docker-compose.ipv6-interface-id.yml
 |-- docker-compose.ipv6-reserved-iid.yml
+|-- docker-compose.multi-interface.yml
+|-- docker-compose.ha.yml
 |-- RFC_EXPANSION_PLAN.md
 |-- run_dhcp_tests.sh
 |-- run_lifecycle_tests.sh
@@ -443,6 +454,9 @@ dhcp-acceptance-tests/
 |-- run_dhcpv6_generation_lifecycle_tests.sh
 |-- run_dhcpv6_reconfigure_tests.sh
 |-- run_offer_hold_boundary_tests.sh
+|-- run_reload_tests.sh
+|-- run_multi_interface_tests.sh
+|-- run_ha_tests.sh
 |-- run_tests.py
 |-- summarize_junit.py
 |-- tests/test_summarize_junit.py

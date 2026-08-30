@@ -35,6 +35,20 @@ DHCPV4_PING_CHECK_ENABLED="${DHCPV4_PING_CHECK_ENABLED:-0}"
 DHCPV4_PING_TIMEOUT_MS="${DHCPV4_PING_TIMEOUT_MS:-300}"
 DHCPV4_PING_CHECK_ADDRESS="${DHCPV4_PING_CHECK_ADDRESS:-}"
 DHCPV4_PING_CHECK_PEER_MAC="${DHCPV4_PING_CHECK_PEER_MAC:-02:42:ac:1d:00:03}"
+DHCPV4_OFFER_LIFETIME="${DHCPV4_OFFER_LIFETIME:-0}"
+DHCPV4_CLASS_DOMAIN="${DHCPV4_CLASS_DOMAIN:-class.acceptance.test}"
+DHCPV4_SECOND_INTERFACE="${DHCPV4_SECOND_INTERFACE:-}"
+DHCPV4_SECOND_SUBNET="${DHCPV4_SECOND_SUBNET:-}"
+DHCPV4_SECOND_POOL_START="${DHCPV4_SECOND_POOL_START:-}"
+DHCPV4_SECOND_POOL_END="${DHCPV4_SECOND_POOL_END:-}"
+DHCPV4_SECOND_ROUTER="${DHCPV4_SECOND_ROUTER:-}"
+KEA_HA_ENABLED="${KEA_HA_ENABLED:-0}"
+KEA_HA_SERVER_NAME="${KEA_HA_SERVER_NAME:-server1}"
+KEA_HA_PRIMARY_URL="${KEA_HA_PRIMARY_URL:-http://172.29.0.2:8005/}"
+KEA_HA_STANDBY_URL="${KEA_HA_STANDBY_URL:-http://172.29.0.4:8005/}"
+KEA_HA_HEARTBEAT_DELAY_MS="${KEA_HA_HEARTBEAT_DELAY_MS:-1000}"
+KEA_HA_MAX_RESPONSE_DELAY_MS="${KEA_HA_MAX_RESPONSE_DELAY_MS:-4000}"
+KEA_HA_MAX_ACK_DELAY_MS="${KEA_HA_MAX_ACK_DELAY_MS:-1000}"
 
 prefix_to_netmask() {
     _p=$1
@@ -57,6 +71,13 @@ prefix_to_netmask() {
 }
 
 NETMASK=$(prefix_to_netmask "$PREFIX")
+
+case "$DHCPV4_OFFER_LIFETIME" in
+    ''|*[!0-9]*)
+        echo "[kea] ERROR: DHCPV4_OFFER_LIFETIME must be a non-negative integer" >&2
+        exit 1
+        ;;
+esac
 
 IFS=. read -r i1 i2 i3 i4 << EOF
 $IP
@@ -113,7 +134,7 @@ if [ "$DHCPV4_INJECT_OVERLAPPING_SUBNET" = "1" ]; then
     esac
 fi
 
-LEASE_FILE=/var/lib/kea/kea-leases4.csv
+LEASE_FILE="${KEA_LEASE_FILE:-/var/lib/kea/kea-leases4.csv}"
 if [ "$DHCPV4_FORCE_STORAGE_FAILURE" = "1" ]; then
     LEASE_FILE=/proc/kea-acceptance-leases.csv
 fi
@@ -159,14 +180,50 @@ done
 
 DHCPV4_RELAY_POLICY_CIRCUIT_HEX=$(printf '%s' "$DHCPV4_RELAY_POLICY_CIRCUIT" | od -An -tx1 | tr -d ' \n')
 
-PING_CHECK_HOOKS='[]'
+KEA_INTERFACES="[ \"$IFACE\" ]"
+SECOND_SUBNET_OBJECT=""
+if [ -n "$DHCPV4_SECOND_INTERFACE" ] || [ -n "$DHCPV4_SECOND_SUBNET" ]; then
+    if [ -z "$DHCPV4_SECOND_INTERFACE" ] || [ -z "$DHCPV4_SECOND_SUBNET" ] || \
+       [ -z "$DHCPV4_SECOND_POOL_START" ] || [ -z "$DHCPV4_SECOND_POOL_END" ]; then
+        echo "[kea] ERROR: second-interface profile requires interface, subnet, and pool endpoints" >&2
+        exit 1
+    fi
+    SECOND_IP_PREFIX=$(ip -4 addr show "$DHCPV4_SECOND_INTERFACE" | awk '/inet / {print $2; exit}')
+    if [ -z "$SECOND_IP_PREFIX" ]; then
+        echo "[kea] ERROR: No IPv4 address on $DHCPV4_SECOND_INTERFACE" >&2
+        exit 1
+    fi
+    SECOND_PREFIX="${DHCPV4_SECOND_SUBNET##*/}"
+    SECOND_NETMASK=$(prefix_to_netmask "$SECOND_PREFIX")
+    if [ -z "$DHCPV4_SECOND_ROUTER" ]; then
+        SECOND_NET3=$(echo "${DHCPV4_SECOND_SUBNET%%/*}" | cut -d. -f1-3)
+        DHCPV4_SECOND_ROUTER="${SECOND_NET3}.1"
+    fi
+    KEA_INTERFACES="[ \"$IFACE\", \"$DHCPV4_SECOND_INTERFACE\" ]"
+    SECOND_SUBNET_OBJECT=",
+      {
+        \"id\": 5,
+        \"subnet\": \"$DHCPV4_SECOND_SUBNET\",
+        \"interface\": \"$DHCPV4_SECOND_INTERFACE\",
+        \"pools\": [ { \"pool\": \"$DHCPV4_SECOND_POOL_START - $DHCPV4_SECOND_POOL_END\" } ],
+        \"option-data\": [
+          { \"name\": \"routers\", \"data\": \"$DHCPV4_SECOND_ROUTER\" },
+          { \"name\": \"subnet-mask\", \"data\": \"$SECOND_NETMASK\" },
+          { \"name\": \"domain-name-servers\", \"data\": \"8.8.8.8\" },
+          { \"name\": \"domain-name\", \"data\": \"second-interface.acceptance.test\" }
+        ]
+      }"
+fi
+
+HOOK_LIBRARIES='[]'
+KEA_MULTI_THREADING_CONFIG=""
 if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ]; then
     PING_CHECK_LIBRARY=$(find /usr/lib /usr/local/lib -name libdhcp_ping_check.so -print -quit 2>/dev/null || true)
     if [ -z "$PING_CHECK_LIBRARY" ]; then
         echo "[kea] ERROR: ping-check requested but libdhcp_ping_check.so is unavailable" >&2
         exit 1
     fi
-    PING_CHECK_HOOKS="[
+    HOOK_LIBRARIES="[
       {
         \"library\": \"$PING_CHECK_LIBRARY\",
         \"parameters\": {
@@ -176,6 +233,66 @@ if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ]; then
         }
       }
     ]"
+fi
+
+if [ "$KEA_HA_ENABLED" = "1" ]; then
+    if [ "$DHCPV4_PING_CHECK_ENABLED" = "1" ]; then
+        echo "[kea] ERROR: HA and ping-check profiles cannot be combined" >&2
+        exit 1
+    fi
+    LEASE_COMMANDS_LIBRARY=$(find /usr/lib /usr/local/lib -name libdhcp_lease_cmds.so -print -quit 2>/dev/null || true)
+    HA_LIBRARY=$(find /usr/lib /usr/local/lib -name libdhcp_ha.so -print -quit 2>/dev/null || true)
+    if [ -z "$LEASE_COMMANDS_LIBRARY" ] || [ -z "$HA_LIBRARY" ]; then
+        echo "[kea] ERROR: HA requested but required Kea hook libraries are unavailable" >&2
+        exit 1
+    fi
+    HOOK_LIBRARIES="[
+      {
+        \"library\": \"$LEASE_COMMANDS_LIBRARY\",
+        \"parameters\": {}
+      },
+      {
+        \"library\": \"$HA_LIBRARY\",
+        \"parameters\": {
+          \"high-availability\": [
+            {
+              \"this-server-name\": \"$KEA_HA_SERVER_NAME\",
+              \"mode\": \"hot-standby\",
+              \"heartbeat-delay\": $KEA_HA_HEARTBEAT_DELAY_MS,
+              \"max-response-delay\": $KEA_HA_MAX_RESPONSE_DELAY_MS,
+              \"max-ack-delay\": $KEA_HA_MAX_ACK_DELAY_MS,
+              \"max-unacked-clients\": 0,
+              \"sync-leases\": true,
+              \"multi-threading\": {
+                \"enable-multi-threading\": true,
+                \"http-dedicated-listener\": true,
+                \"http-listener-threads\": 1,
+                \"http-client-threads\": 1
+              },
+              \"peers\": [
+                {
+                  \"name\": \"server1\",
+                  \"url\": \"$KEA_HA_PRIMARY_URL\",
+                  \"role\": \"primary\",
+                  \"auto-failover\": true
+                },
+                {
+                  \"name\": \"server2\",
+                  \"url\": \"$KEA_HA_STANDBY_URL\",
+                  \"role\": \"standby\",
+                  \"auto-failover\": true
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]"
+    KEA_MULTI_THREADING_CONFIG='"multi-threading": {
+      "enable-multi-threading": true,
+      "thread-pool-size": 2,
+      "packet-queue-size": 64
+    },'
 fi
 
 KEA_LOG_OUTPUT="stdout"
@@ -198,9 +315,10 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
 {
   "Dhcp4": {
     "authoritative": true,
-    "hooks-libraries": $PING_CHECK_HOOKS,
+    $KEA_MULTI_THREADING_CONFIG
+    "hooks-libraries": $HOOK_LIBRARIES,
     "interfaces-config": {
-      "interfaces": [ "$IFACE" ]
+      "interfaces": $KEA_INTERFACES
     },
     "dhcp-ddns": {
       "enable-updates": true
@@ -220,7 +338,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
         "name": "acceptance-class",
         "test": "option[60].text == '$DHCPV4_CLASS_NAME'",
         "option-data": [
-          { "name": "domain-name", "data": "class.acceptance.test" }
+          { "name": "domain-name", "data": "$DHCPV4_CLASS_DOMAIN" }
         ]
       },
       {
@@ -246,6 +364,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
     "renew-timer": 60,
     "rebind-timer": 105,
     "valid-lifetime": 120,
+    "offer-lifetime": $DHCPV4_OFFER_LIFETIME,
     "subnet4": [
       $OVERLAP_SUBNET_BEFORE
       {
@@ -295,7 +414,7 @@ cat > /etc/kea/kea-dhcp4.conf << CONF
           { "name": "domain-name-servers", "data": "8.8.8.8" },
           { "name": "rfc3396-long-option", "data": "$RFC3396_LONG_OPTION" }
         ]
-      }$OVERLAP_SUBNET_AFTER
+      }$OVERLAP_SUBNET_AFTER$SECOND_SUBNET_OBJECT
     ],
     "loggers": [
       {

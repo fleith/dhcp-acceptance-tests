@@ -1,0 +1,47 @@
+services:
+  dhcp-server:
+    environment:
+      KEA_HA_ENABLED: "1"
+      KEA_HA_SERVER_NAME: server1
+      KEA_HA_PRIMARY_URL: http://172.29.0.2:8005/
+      KEA_HA_STANDBY_URL: http://172.29.0.4:8005/
+      KEA_LEASE_FILE: /var/lib/kea/kea-leases4-primary.csv
+    networks:
+      dhcp-test-net:
+        ipv4_address: 172.29.0.2
+        interface_name: eth0
+
+  dhcp-secondary:
+    image: dhcp-test-server-kea:local
+    container_name: dhcp-test-server-secondary
+    command: ["eth0"]
+    environment:
+      RFC3011_ALT_SUBNET: 172.29.1.0/24
+      DHCPV4_RELAY_SUBNET: 172.29.2.0/24
+      KEA_HA_ENABLED: "1"
+      KEA_HA_SERVER_NAME: server2
+      KEA_HA_PRIMARY_URL: http://172.29.0.2:8005/
+      KEA_HA_STANDBY_URL: http://172.29.0.4:8005/
+      KEA_LEASE_FILE: /var/lib/kea/kea-leases4-standby.csv
+    cap_add:
+      - NET_ADMIN
+    privileged: true
+    volumes:
+      - ./test-state:/test-state
+      - ./test-state:/var/log/kea
+    networks:
+      dhcp-test-net:
+        ipv4_address: 172.29.0.4
+        interface_name: eth0
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ulpn | grep -q ':67'"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+
+  test-runner:
+    networks:
+      dhcp-test-net:
+        ipv4_address: 172.29.0.3
+        interface_name: eth0

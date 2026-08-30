@@ -1,0 +1,36 @@
+services:
+  dhcp-server:
+    environment:
+      DHCPV4_SECOND_INTERFACE: eth1
+      DHCPV4_SECOND_SUBNET: 172.30.0.0/24
+      DHCPV4_SECOND_POOL_START: 172.30.0.100
+      DHCPV4_SECOND_POOL_END: 172.30.0.120
+      DHCPV4_SECOND_ROUTER: 172.30.0.1
+    networks:
+      dhcp-test-net:
+        ipv4_address: 172.29.0.2
+        interface_name: eth0
+      dhcp-secondary-net:
+        ipv4_address: 172.30.0.2
+        interface_name: eth1
+
+  test-runner:
+    environment:
+      TEST_SECOND_INTERFACE: eth1
+      TEST_SECOND_SUBNET: 172.30.0.0/24
+      TEST_SECOND_SERVER_IP: 172.30.0.2
+      TEST_SECOND_WRONG_SUBNET_HINT: 172.29.0.100
+    networks:
+      dhcp-test-net:
+        ipv4_address: 172.29.0.3
+        interface_name: eth0
+      dhcp-secondary-net:
+        ipv4_address: 172.30.0.3
+        interface_name: eth1
+
+networks:
+  dhcp-secondary-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
