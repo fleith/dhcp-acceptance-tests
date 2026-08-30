@@ -1467,9 +1467,13 @@ def step_reload_new_policy(context):
 @given("an active DHCPv4 binding exists before HA failover")
 def step_ha_existing_binding(context):
     _ensure_cleanup(context)
-    _state(context)["ha_lease"] = _dora(
+    lease = _dora(
         context, client_id=b"\xffacceptance-ha-client"
     )
+    _state(context)["ha_lease"] = lease
+    _state(context)["ha_primary_server_id"] = dhcp_option(
+        lease["acks"][0], "server_id"
+    ) or dhcp_option(lease["offer"], "server_id")
 
 
 def _recover_ha():
@@ -1487,6 +1491,19 @@ def step_ha_failover(context):
 @then("the binding can be rebound through the remaining HA peer")
 def step_ha_rebind(context):
     _state(context)["ha_rebind_ack"] = _rebind(_state(context)["ha_lease"])
+
+
+@then("the rebinding response comes from a different HA peer")
+def step_ha_rebind_peer_changed(context):
+    state = _state(context)
+    initial = state["ha_primary_server_id"]
+    failover = dhcp_option(state["ha_rebind_ack"], "server_id")
+    assert initial and failover, (
+        f"HA responses must identify both peers: before={initial!r} after={failover!r}"
+    )
+    assert failover != initial, (
+        f"Rebinding response still identifies failed HA primary {initial}"
+    )
 
 
 @then("the remaining HA peer never allocates that active address to another client")
@@ -1646,6 +1663,9 @@ def step_second_interface(context):
         "name": interface,
         "subnet": subnet,
         "server": server,
+        "wrong_subnet_hint": os.getenv(
+            "TEST_SECOND_WRONG_SUBNET_HINT", "172.29.0.100"
+        ).strip(),
     }
 
 
@@ -1667,18 +1687,31 @@ def _packets_on_interface(interface, outbound, xid, message_types, mac):
     ]
 
 
-@when("a DHCPv4 client acquires a lease through the second interface")
-def step_second_interface_dora(context):
+def _second_interface_discover(context, requested=None):
     config = _state(context)["second_interface"]
     mac = _new_mac()
     xid = _new_xid()
-    discover = build_client_packet(mac, xid, _client_options("discover"))
+    discover = build_client_packet(
+        mac, xid, _client_options("discover", requested=requested)
+    )
     offers = _packets_on_interface(config["name"], discover, xid, {2}, mac)
     assert offers, "Second interface received no DHCPOFFER"
-    offered = offers[0][BOOTP].yiaddr
+    return {"mac": mac, "xid": xid, "packet": discover, "offers": offers}
+
+
+def _second_interface_request(context, discovery):
+    config = _state(context)["second_interface"]
+    offered_addresses = {packet[BOOTP].yiaddr for packet in discovery["offers"]}
+    assert len(offered_addresses) == 1, (
+        f"Second interface returned conflicting candidates: {offered_addresses}"
+    )
+    offered = offered_addresses.pop()
+    selected_offer = discovery["offers"][0]
+    mac = discovery["mac"]
+    xid = discovery["xid"]
     options = [
         ("message-type", "request"),
-        ("server_id", dhcp_option(offers[0], "server_id") or config["server"]),
+        ("server_id", dhcp_option(selected_offer, "server_id") or config["server"]),
         ("requested_addr", offered),
         ("param_req_list", PARAMETER_REQUEST_LIST),
         "end",
@@ -1688,15 +1721,73 @@ def step_second_interface_dora(context):
     assert not [packet for packet in acks if _message_type(packet) == 6]
     acks = [packet for packet in acks if _message_type(packet) == 5]
     assert acks, "Second interface received no DHCPACK"
-    _state(context)["second_interface_lease"] = acks[0][BOOTP].yiaddr
+    return {
+        "mac": mac,
+        "xid": xid,
+        "ip": acks[0][BOOTP].yiaddr,
+        "offer": selected_offer,
+        "acks": acks,
+        "client_id": None,
+    }
+
+
+@when("a DHCPv4 client acquires a lease through the second interface")
+def step_second_interface_dora(context):
+    lease = _second_interface_request(context, _second_interface_discover(context))
+    _state(context)["second_interface_lease"] = lease
 
 
 @then("the second-interface lease belongs to its configured subnet")
 def step_second_interface_subnet(context):
     state = _state(context)
-    assert ipaddress.ip_address(state["second_interface_lease"]) in ipaddress.ip_network(
-        state["second_interface"]["subnet"], strict=False
+    assert ipaddress.ip_address(
+        state["second_interface_lease"]["ip"]
+    ) in ipaddress.ip_network(state["second_interface"]["subnet"], strict=False)
+
+
+@when("DHCPv4 clients acquire leases through both configured interfaces")
+def step_both_interfaces_dora(context):
+    state = _state(context)
+    state["primary_interface_lease"] = _dora(context)
+    state["second_interface_lease"] = _second_interface_request(
+        context, _second_interface_discover(context)
     )
+
+
+@then("the primary-interface lease belongs to the primary subnet")
+def step_primary_interface_subnet(context):
+    lease = _state(context)["primary_interface_lease"]
+    assert ipaddress.ip_address(lease["ip"]) in ipaddress.ip_network(
+        SUBNET, strict=False
+    )
+
+
+@when("a client on the second interface hints an address from the primary subnet")
+def step_second_interface_wrong_hint(context):
+    state = _state(context)
+    state["second_interface_hint_discovery"] = _second_interface_discover(
+        context, requested=state["second_interface"]["wrong_subnet_hint"]
+    )
+
+
+@then("the second interface never offers an address from the primary subnet")
+def step_second_interface_rejects_wrong_scope(context):
+    discovery = _state(context)["second_interface_hint_discovery"]
+    primary = ipaddress.ip_network(SUBNET, strict=False)
+    offered = {packet[BOOTP].yiaddr for packet in discovery["offers"]}
+    assert all(ipaddress.ip_address(address) not in primary for address in offered), (
+        f"Second interface leaked primary-subnet candidates: {sorted(offered)}"
+    )
+
+
+@then("the second-interface client can still commit its local candidate")
+def step_second_interface_commits_local_hint_recovery(context):
+    state = _state(context)
+    lease = _second_interface_request(
+        context, state["second_interface_hint_discovery"]
+    )
+    state["second_interface_lease"] = lease
+    step_second_interface_subnet(context)
 
 
 @given("an active DHCPv4 binding exists before a runtime storage failure")

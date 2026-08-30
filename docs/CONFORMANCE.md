@@ -37,7 +37,10 @@ needed before making a complete claim.
 | DHCPv6 REQUEST regeneration | `bash ./run_dhcpv6_request_regeneration_tests.sh [--server-version kea-lts\|kea-stable]` | Bundled Kea adapter combines identical wire retransmission with exact-DUID, exact-transaction lease allocation/reuse event deltas; targets may replace the adapter and topology |
 | DHCPv6 REBIND ownership | `bash ./run_dhcpv6_rebind_ownership_tests.sh [--server-version kea-lts\|kea-stable]` | Address-only, prefix-only, both cross-type, and fully mixed ownership transactions; exact owned-resource preservation, zero/omitted forged resources, attacker renewal of every positive result, and renewal by both legitimate owners |
 | DHCPv6 generation lifecycle | Supply the generation topology variables and run `bash ./run_dhcpv6_generation_lifecycle_tests.sh --compose-file <target-override>` | Two-subnet simple-predictor rejection, repeated persistent restarts, allocation-fingerprint changes, collision avoidance, exhaustion, release, and reuse |
-| DHCPv4 offer-hold boundary | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS=<seconds> bash ./run_offer_hold_boundary_tests.sh --compose-file <target-override>` | Concurrent contender waves immediately before and after the configured expiry boundary |
+| DHCPv4 offer-hold boundary | `bash ./run_offer_hold_boundary_tests.sh` | Bundled two-second Kea offer lifetime with concurrent contender waves immediately before and after expiry; target overrides may set their exact duration |
+| Live configuration reload | `bash ./run_reload_tests.sh` | Change class policy through Kea SIGHUP, retain and renew the active binding, and apply the new policy to a fresh client |
+| DHCPv4 hot-standby HA | `bash ./run_ha_tests.sh` | Replicate an active lease, kill the primary, require automatic partner-down, renew through the standby, and prevent duplicate ownership |
+| Multiple direct interfaces | `bash ./run_multi_interface_tests.sh` | Allocate independently on two interfaces/subnets and reject a primary-subnet hint arriving on the second interface |
 | Overlapping leases | `bash ./run_overlap_lease_tests.sh --server kea` | Runtime pool and option selection in both accepted subnet declaration orders |
 | Lifecycle | `bash ./run_lifecycle_tests.sh --server <server>` | Graceful restart, SIGKILL recovery, and persistent binding ownership |
 | Configuration safety | `bash ./run_config_safety_tests.sh --server <server> [--overlap-policy reject\|allow]` | Explicit overlap policy and unavailable lease-store rejection |
@@ -147,8 +150,8 @@ reported as a pass.
 
 | Capability | Required configuration |
 |---|---|
-| `reload` | `TEST_RELOAD_COMMAND`; optionally `TEST_RELOADED_CLASS_DOMAIN` |
-| `ha` | `TEST_HA_FAILOVER_COMMAND`; optionally `TEST_HA_RECOVER_COMMAND` |
+| `reload` | `TEST_RELOAD_COMMAND`; optionally `TEST_RELOADED_CLASS_DOMAIN`; the bundled Kea runner coordinates and verifies SIGHUP |
+| `ha` | `TEST_HA_FAILOVER_COMMAND`; optionally `TEST_HA_RECOVER_COMMAND`; the bundled Kea runner supplies a true hot-standby pair |
 | `ddns` | `TEST_DNS_SERVER` and optionally `TEST_DDNS_FQDN`; the bundled ISC profile supplies the DNS observer and server configuration |
 | `dhcpv6_ddns` | `TEST_DNS_SERVER` plus a DHCPv6 server/D2 integration; the bundled Kea profile supplies D2, the authoritative observer, and short expiry timers |
 | `rfc4702_ascii_unsupported` | Target service configured without legacy ASCII Option 81 support; the scenario requires DORA to succeed while both responses ignore Client FQDN |
@@ -156,8 +159,8 @@ reported as a pass.
 | `dhcpv6_interface_id_policy` | DHCPv6 server with two pools guarded by exact closest-client Interface-ID matching; the bundled Kea runner supplies the policy and expected ranges |
 | `dhcpv6_request_observability` | `TEST_DHCPV6_REQUEST_COUNTER_COMMAND`, which prints the cumulative number of matching REQUEST-processing events |
 | `dhcpv6_generation_lifecycle` | `TEST_DHCPV6_GENERATION_RESTART_COMMAND`, two served subnets, a usable relay link address, and exact per-subnet pool capacity |
-| `offer_hold_expiry` | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS`, set to the target's configured offer-hold duration; optionally tune contender count |
-| `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP` |
+| `offer_hold_expiry` | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS`, set to the target's configured offer-hold duration; the bundled Kea runner configures both server and test to two seconds by default |
+| `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP`; the bundled topology discovers both interfaces from their static addresses on separate `/24` networks |
 | `authenticated_reconfigure` | `TEST_RECONFIGURE_TRIGGER_COMMAND`; optionally `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` for a second product-specific validation |
 | `storage_fault` | `TEST_STORAGE_FAIL_COMMAND` and `TEST_STORAGE_RECOVER_COMMAND` for an external target; the bundled reference fixtures use `run_storage_fault_tests.sh` |
 
@@ -189,6 +192,15 @@ after the service is ready and persistent lease state is available. Configure
 `TEST_DHCPV6_GENERATION_POOL_CAPACITY_PER_SUBNET` to match the target topology.
 The test deliberately requires capacity to equal twice the configured sample
 size, making full-pool collision and released-address reuse assertions exact.
+
+The bundled operational runners coordinate host actions through
+`adapters/orchestrated_action.py`. Reload waits for a live classed binding,
+changes the generated Kea configuration, sends SIGHUP, and resumes only after
+Kea reports successful configuration. HA starts two Kea 3.2 servers with the
+Lease Commands and HA hooks, waits for both services, kills the active primary,
+and resumes the client only after the standby reports `partner-down`. The HA
+fixture uses a zero unacknowledged-client threshold because the isolated local
+network treats failed peer heartbeats as authoritative failure evidence.
 
 Kea currently documents client Reconfigure as unsupported, so this profile is
 not advertised by the bundled reference fixtures and remains conditional until

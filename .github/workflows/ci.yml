@@ -334,6 +334,53 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  ipv4-operational-capabilities:
+    name: IPv4 operational capabilities / Kea 3.2.0
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Prepare operational action directory
+        run: |
+          mkdir -p test-state
+          chmod 0777 test-state
+
+      - name: Verify offer expiry, reload, multiple interfaces, and HA
+        id: operational-tests
+        run: |
+          bash ./run_offer_hold_boundary_tests.sh
+          bash ./run_reload_tests.sh
+          bash ./run_multi_interface_tests.sh
+          bash ./run_ha_tests.sh
+
+      - name: Tear down operational fixtures
+        if: always()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.kea.yml \
+            -f docker-compose.multi-interface.yml down -v
+          docker compose -f docker-compose.yml -f docker-compose.kea.yml \
+            -f docker-compose.ha.yml down -v
+          docker compose down -v
+
+      - name: Publish operational capability summary
+        if: always()
+        run: >-
+          python3 summarize_junit.py
+          --results test-results
+          --title "IPv4 operational capabilities / Kea 3.2.0"
+          --run-outcome "${{ steps.operational-tests.outcome }}"
+
+      - name: Upload operational capability reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipv4-operational-capabilities-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   focused-robustness:
     name: Focused robustness / ${{ matrix.server }} / ${{ matrix.ip_version }}
     runs-on: ubuntu-latest
