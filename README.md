@@ -136,6 +136,10 @@ bash ./run_multi_interface_tests.sh
 # Two-server Kea hot-standby replication and automatic failover
 bash ./run_ha_tests.sh
 
+# Target service with three Option 82 scoped duplicate-address namespaces
+bash ./run_option82_factory_namespace_tests.sh \
+  --compose-file docker-compose.target.yml
+
 # RFC 9915 authenticated Reconfigure against a target-service adapter
 TEST_RECONFIGURE_TRIGGER_COMMAND=/app/adapter/trigger-reconfigure \
   bash ./run_dhcpv6_reconfigure_tests.sh --compose-file docker-compose.target.yml
@@ -149,6 +153,14 @@ Optional product capabilities are tagged `@capability` and skipped unless
 explicitly advertised through `TEST_CAPABILITIES`. See
 [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) for adapter variables and the
 claim boundary.
+
+The `option82_factory_namespaces` capability targets services that deliberately
+scope leases by a trusted relay tuple. It is not enabled for ISC DHCP or Kea.
+Configure Factory A, B, and C with independent single-address pools containing
+the same address, advertise the capability, and select
+`@option82_factory_namespaces`. The test commits and rebinds all three bindings,
+checks exact Option 82 echo and relay routing, and rejects a Circuit ID replayed
+through the wrong relay.
 
 Version profiles keep the required distribution baseline while making upgrade
 compatibility reproducible:
@@ -249,6 +261,13 @@ docker compose -f docker-compose.yml -f docker-compose.ipv6.yml up --abort-on-co
 | `TEST_DHCPV4_OVERLAP_LOSING_HINT` | empty | Requested-address hint from the non-selected overlapping scope |
 | `TEST_DHCPV4_OVERLAP_EXPECTED_DOMAIN` | empty | Domain-name marker proving which overlapping scope supplied response policy |
 | `TEST_DHCPV4_OVERLAP_EXPECTED_SCOPE` | empty | Human-readable selected-scope label used in overlap assertion failures |
+| `TEST_DHCPV4_FACTORY_CLIENT_SUBNET` | `10.40.0.0/24` | Overlapping client subnet configured independently in all three factory namespaces |
+| `TEST_DHCPV4_FACTORY_EXPECTED_ADDRESS` | `10.40.0.100` | Single address present in every factory pool, which all three clients must commit concurrently |
+| `TEST_DHCPV4_FACTORY_RELAY_PREFIX` | `24` | Prefix used when installing the three synthetic relay addresses on the test interface |
+| `TEST_DHCPV4_FACTORY_RESPONSE_TIMEOUT` | `5` | Maximum seconds for each factory relay exchange |
+| `TEST_DHCPV4_FACTORY_{A,B,C}_GIADDR` | `172.31.0.11`, `.12`, `.13` | Unique, routable relay addresses for Factory A, B, and C |
+| `TEST_DHCPV4_FACTORY_{A,B,C}_CIRCUIT_ID` | `factory-a`, `factory-b`, `factory-c` | Opaque Option 82 Circuit IDs; prefix a value with `hex:` to supply arbitrary bytes |
+| `TEST_DHCPV4_FACTORY_{A,B,C}_REMOTE_ID` | `switch-a`, `switch-b`, `switch-c` | Opaque Option 82 Remote IDs; prefix a value with `hex:` to supply arbitrary bytes |
 | `TEST_DHCPV4_STRESS_PREPARE_CLIENTS` | `32` | Active bindings committed and recorded before the orchestrated crash |
 | `TEST_DHCPV4_STRESS_INFLIGHT_CLIENTS` | `24` | New clients requesting leases while the server is SIGKILLed |
 | `TEST_DHCPV4_STRESS_POST_CLIENTS` | `8` | Fresh clients admitted after recovery without duplicating active bindings |
@@ -347,6 +366,12 @@ For backends that accept overlapping subnets, the isolated Kea profile also
 checks that both declaration orders retain the reference selection result,
 OFFER-to-ACK scope consistency, scope-specific options, and rejection of
 requested-address hints from the non-selected pool.
+The target-only Option 82 factory profile goes further: three trusted
+`giaddr`/Circuit-ID/Remote-ID tuples select independent namespaces containing
+the same single address. Three distinct clients must hold and rebind those
+duplicate address bytes concurrently, while a Circuit-ID replay through the
+wrong relay must not allocate. This is documented as a product extension of
+RFC 3046 policy rather than an RFC 6607 compliance claim.
 Reload, HA, and a second direct interface have bundled Kea 3.2 profiles in CI,
 while authenticated DHCPv6 Reconfigure remains capability-gated because it
 requires a product-specific control-plane adapter. External services may use
@@ -406,11 +431,13 @@ dhcp-acceptance-tests/
 |   |-- dhcpv4_conformance.feature
 |   |-- dhcpv4_persistence.feature
 |   |-- dhcpv4_relay_conformance.feature
+|   |-- dhcpv4_option82_factory_namespaces.feature
 |   |-- optional_service_capabilities.feature
 |   |-- dhcpv6_optional_capabilities.feature
 |   |-- environment.py
 |   `-- steps/
 |       |-- dhcp_steps.py
+|       |-- dhcpv4_factory_namespace_steps.py
 |       |-- dhcpv4_support.py
 |       |-- dhcp_pool_exhaustion_steps.py
 |       |-- dhcp_ping_check_steps.py
@@ -445,6 +472,7 @@ dhcp-acceptance-tests/
 |-- run_dhcp_tests.sh
 |-- run_lifecycle_tests.sh
 |-- run_config_safety_tests.sh
+|-- run_option82_factory_namespace_tests.sh
 |-- run_ping_check_tests.sh
 |-- run_ipv4_observability_tests.sh
 |-- run_dhcpv6_rfc4704_tests.sh

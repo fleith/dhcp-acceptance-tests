@@ -110,6 +110,19 @@ does not change the reference selection result. DHCPOFFER and DHCPACK must stay
 in that selected scope. The runner also supplies a requested-address hint from
 the losing scope and proves the hint cannot cross the selection boundary.
 
+The Option 82 factory-namespace profile is a separate, capability-gated target
+service contract. It models Factory A, B, and C with unique relay `giaddr`,
+Circuit ID, and Remote ID tuples while all three use `10.40.0.0/24`. Configure
+the target with an independent single-address `10.40.0.100` pool for each
+trusted tuple. The scenario requires three different clients to commit and
+rebind that same address concurrently, verifies byte-exact Option 82 echo and
+the correct relay return path, and rejects Factory B's Circuit ID when replayed
+through Factory A's relay. This deliberately tests an Option 82 based product
+extension; it must not be reported as RFC 6607 support. Run it with
+`run_option82_factory_namespace_tests.sh --compose-file docker-compose.target.yml`;
+the override must replace the bundled Kea service with the target and configure
+the three isolated one-address pools.
+
 The IPv4 observability runner supplies the integration points that cannot be
 proven from DHCP packets alone. Both reference families expose a server event
 log and must identify the exact DHCPDECLINE address. Kea 3.2 additionally runs
@@ -161,6 +174,7 @@ reported as a pass.
 | `dhcpv6_generation_lifecycle` | `TEST_DHCPV6_GENERATION_RESTART_COMMAND`, two served subnets, a usable relay link address, and exact per-subnet pool capacity |
 | `offer_hold_expiry` | `TEST_DHCPV4_OFFER_HOLD_EXPIRY_SECONDS`, set to the target's configured offer-hold duration; the bundled Kea runner configures both server and test to two seconds by default |
 | `multi_interface` | `TEST_SECOND_INTERFACE`, `TEST_SECOND_SUBNET`, and `TEST_SECOND_SERVER_IP`; the bundled topology discovers both interfaces from their static addresses on separate `/24` networks |
+| `option82_factory_namespaces` | Three trusted relay mappings from `TEST_DHCPV4_FACTORY_{A,B,C}_{GIADDR,CIRCUIT_ID,REMOTE_ID}` and an independent one-address pool at `TEST_DHCPV4_FACTORY_EXPECTED_ADDRESS` in each factory namespace; the target must route replies to every configured `giaddr` |
 | `authenticated_reconfigure` | `TEST_RECONFIGURE_TRIGGER_COMMAND`; optionally `TEST_RECONFIGURE_AUTH_VALIDATOR_COMMAND` for a second product-specific validation |
 | `storage_fault` | `TEST_STORAGE_FAIL_COMMAND` and `TEST_STORAGE_RECOVER_COMMAND` for an external target; the bundled reference fixtures use `run_storage_fault_tests.sh` |
 
