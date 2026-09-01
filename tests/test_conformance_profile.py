@@ -11,6 +11,13 @@ CAPACITY_TOPOLOGY = ROOT / "docker-compose.capacity.yml"
 CAPACITY_RUNNER = ROOT / "run_capacity_tests.sh"
 HA_TOPOLOGY = ROOT / "docker-compose.ha.yml"
 MULTI_INTERFACE_TOPOLOGY = ROOT / "docker-compose.multi-interface.yml"
+FACTORY_NAMESPACE_FEATURE = (
+    ROOT / "features" / "dhcpv4_option82_factory_namespaces.feature"
+)
+FACTORY_NAMESPACE_STEPS = (
+    ROOT / "features" / "steps" / "dhcpv4_factory_namespace_steps.py"
+)
+FACTORY_NAMESPACE_RUNNER = ROOT / "run_option82_factory_namespace_tests.sh"
 
 
 class ConformanceProfileTests(unittest.TestCase):
@@ -189,6 +196,55 @@ class ConformanceProfileTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn('if [ "$DHCPV4_OFFER_LIFETIME" != "0" ]', kea_entrypoint)
+
+    def test_option82_factory_namespace_profile_is_conditional(self):
+        row = next(
+            row
+            for row in self.profile["coverage"]
+            if row["id"] == "GAP-OPTION82-FACTORY-NAMESPACES"
+        )
+        self.assertEqual(row["status"], "conditional")
+        self.assertEqual(row["mode"], "capability")
+        self.assertIn(
+            "features/dhcpv4_option82_factory_namespaces.feature",
+            row["evidence"],
+        )
+        self.assertIn(
+            "run_option82_factory_namespace_tests.sh",
+            row["evidence"],
+        )
+        self.assertIn("not RFC 6607 compliance", row["notes"])
+
+        runner = FACTORY_NAMESPACE_RUNNER.read_text(encoding="utf-8")
+        self.assertIn('TEST_CAPABILITIES="option82_factory_namespaces"', runner)
+        self.assertIn("--tags @option82_factory_namespaces", runner)
+        self.assertIn("TEST_REQUIRE_EXECUTED_SCENARIOS=1", runner)
+
+        feature = FACTORY_NAMESPACE_FEATURE.read_text(encoding="utf-8")
+        steps = FACTORY_NAMESPACE_STEPS.read_text(encoding="utf-8")
+        for phrase in (
+            "three trusted factory relay scopes share one DHCPv4 client subnet",
+            "one client in each factory completes DORA through its trusted relay",
+            "every factory commits the configured shared IPv4 address",
+            "every factory response preserves its own giaddr and Option 82 bytes",
+            "every factory binding rebinds through its original relay scope",
+            "a client presents one factory Circuit ID through another factory relay",
+            "the mismatched relay scope receives no address offer",
+        ):
+            self.assertIn(phrase, feature)
+            self.assertIn(phrase, steps)
+
+        for value in (
+            "10.40.0.0/24",
+            "10.40.0.100",
+            "172.31.0.11",
+            "172.31.0.12",
+            "172.31.0.13",
+            "factory-a",
+            "factory-b",
+            "factory-c",
+        ):
+            self.assertIn(value, steps)
 
     def test_rfc_traceability_profile_is_complete(self):
         traceability = next(

@@ -131,6 +131,21 @@
       "tags": ["@overlap_lease_behavior", "@overlap_direct", "@overlap_hint"]
     },
     {
+      "id": "GAP-OPTION82-FACTORY-NAMESPACES",
+      "title": "Option 82 scoped duplicate-address lease namespaces",
+      "status": "conditional",
+      "mode": "capability",
+      "evidence": [
+        "features/dhcpv4_option82_factory_namespaces.feature",
+        "run_option82_factory_namespace_tests.sh"
+      ],
+      "tags": [
+        "@requires_option82_factory_namespaces",
+        "@option82_factory_namespaces"
+      ],
+      "notes": "This is a target-service extension of RFC 3046 policy, not RFC 6607 compliance. The profile requires three trusted relay tuples to commit and rebind the same address bytes in independent lease namespaces, and rejects a Circuit-ID replayed behind the wrong relay."
+    },
+    {
       "id": "GAP-RELOAD",
       "title": "Configuration reload without losing active bindings",
       "status": "covered",
