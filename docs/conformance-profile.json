@@ -137,6 +137,7 @@
       "mode": "capability",
       "evidence": [
         "features/dhcpv4_option82_factory_namespaces.feature",
+        "features/dhcpv4_factory_lifecycle.feature",
         "run_option82_factory_namespace_tests.sh"
       ],
       "tags": [

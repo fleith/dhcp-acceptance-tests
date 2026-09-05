@@ -3,6 +3,8 @@
 import ipaddress
 import os
 import subprocess
+import json
+import shlex
 
 from behave import given, then, when
 
@@ -19,6 +21,7 @@ from dhcpv4_support import (
     raw_dhcp_option,
     require_scapy_v4,
     start_dhcp_sniffer,
+    build_client_packet,
 )
 
 try:
@@ -238,10 +241,10 @@ def _install_relay_addresses(context, scopes):
         existing.add(address)
 
 
-def _complete_dora(scope):
-    mac = _new_mac()
+def _complete_dora(scope, mac=None, client_id=None):
+    mac = mac or _new_mac()
     xid = _new_xid()
-    client_id = b"\xffoption82-namespace-" + scope["name"].encode("ascii")
+    client_id = client_id or b"\x00factory-" + os.urandom(12)
     discover = _relayed_packet(
         scope,
         mac,
@@ -380,7 +383,8 @@ def step_factory_scopes(context):
 @when("one client in each factory completes DORA through its trusted relay")
 def step_factory_dora(context):
     state = _state(context)
-    state["leases"] = [_complete_dora(scope) for scope in state["scopes"]]
+    for scope in state["scopes"]:
+        state["leases"].append(_complete_dora(scope))
 
 
 @then("every factory commits the configured shared IPv4 address")
@@ -464,3 +468,147 @@ def step_mismatched_factory_rejected(context):
         "Server allocated an address for a Circuit ID replayed through the "
         "wrong trusted relay"
     )
+
+
+def _lifecycle_adapter(action):
+    command = os.environ.get("TEST_FACTORY_LIFECYCLE_COMMAND", "")
+    assert command, "TEST_FACTORY_LIFECYCLE_COMMAND is required"
+    result = subprocess.run(
+        shlex.split(command) + [action], capture_output=True, text=True,
+        check=True, timeout=30,
+    )
+    return json.loads(result.stdout) if action == "snapshot" else None
+
+
+def _snapshot(context):
+    rows = _lifecycle_adapter("snapshot")
+    assert isinstance(rows, list), "Snapshot must be a JSON array"
+    result = {}
+    for row in rows:
+        assert set(row) == {"factory", "address", "state", "client_id", "mac", "expires_at"}
+        key = (row["factory"], row["address"])
+        assert key not in result, f"Duplicate lease key {key}"
+        assert row["state"] in {"active", "declined"}
+        result[key] = row
+    return result
+
+
+@given("the disposable factory lifecycle fixture is reset")
+def step_factory_reset(context):
+    _lifecycle_adapter("reset")
+    assert not _snapshot(context), "Reset must clear the disposable fixture"
+
+
+@when("identical client identities commit the shared address in all factories")
+def step_factory_identical(context):
+    mac, identity = _new_mac(), b"\x00factory-clone-" + os.urandom(8)
+    for scope in _state(context)["scopes"]:
+        _state(context)["leases"].append(_complete_dora(scope, mac, identity))
+    step_factory_metadata(context)
+
+
+@then("all factory owners exist in authoritative lease state")
+def step_factory_owners(context):
+    rows = _snapshot(context)
+    leases = _state(context)["leases"]
+    assert len(rows) == len(leases) == 3
+    for lease in leases:
+        assert lease["address"] == EXPECTED_ADDRESS
+        row = rows[(lease["scope"]["name"], EXPECTED_ADDRESS)]
+        assert row["state"] == "active"
+        assert row["client_id"] == lease["client_id"].hex()
+        assert row["mac"].lower() == lease["mac"].lower()
+    _state(context)["baseline"] = rows
+
+
+@when("Factory A releases its shared address")
+def step_factory_release(context):
+    lease = _state(context)["leases"][0]
+    _release(lease)
+    _state(context)["leases"].remove(lease)
+    _lifecycle_adapter("settle")
+
+
+@then("Factory A alone has no active owner")
+def step_factory_release_state(context):
+    rows = _snapshot(context)
+    baseline = _state(context)["baseline"]
+    expected = {key: row for key, row in baseline.items() if key[0] != "factory-a"}
+    assert rows == expected, "Release modified another factory or retained A"
+
+
+@when("a replacement client commits the shared address in Factory A")
+def step_factory_replacement(context):
+    state = _state(context)
+    state["leases"].append(_complete_dora(state["scopes"][0]))
+
+
+@when("Factory A declines its shared address")
+def step_factory_decline(context):
+    state = _state(context)
+    lease = state["leases"][0]
+    packet = _relayed_packet(
+        lease["scope"], lease["mac"], _new_xid(), "decline",
+        client_id=lease["client_id"], requested=lease["address"],
+        server_id=dhcp_option(lease["ack"], "server_id"),
+    )
+    sendp(packet, iface=INTERFACE, verbose=False)
+    state["leases"].remove(lease)
+    _lifecycle_adapter("settle")
+
+
+@then("Factory A alone is quarantined")
+def step_factory_quarantine(context):
+    rows = _snapshot(context)
+    baseline = _state(context)["baseline"]
+    assert set(rows) == set(baseline)
+    for key, row in rows.items():
+        if key[0] == "factory-a":
+            assert row["state"] == "declined"
+        else:
+            original = baseline[key]
+            assert row["state"] == "active"
+            assert row["client_id"] == original["client_id"]
+            assert row["mac"] == original["mac"]
+
+
+@then("a contender cannot obtain Factory A's quarantined address")
+def step_factory_quarantine_contender(context):
+    scope = _state(context)["scopes"][0]
+    mac, xid = _new_mac(), _new_xid()
+    packet = _relayed_packet(scope, mac, xid, "discover", client_id=b"\x00contender")
+    replies = _exchange(packet, xid, mac, {2, 5, 6}, stop_first=False)
+    assert not [reply for reply in replies if _message_type(reply) in {2, 5}]
+
+
+@when("an identical owner renews by unicast without factory metadata")
+def step_factory_ambiguous(context):
+    lease = _state(context)["leases"][0]
+    xid = _new_xid()
+    from scapy.all import getmacbyip
+    server_mac = getmacbyip(SERVER_IP)
+    assert server_mac, "Unicast server MAC could not be resolved"
+    packet = build_client_packet(
+        lease["mac"], xid,
+        [("message-type", "request"), ("client_id", lease["client_id"]), "end"],
+        ciaddr=lease["address"], source_ip=lease["address"],
+        destination_ip=SERVER_IP, destination_mac=server_mac, flags=0,
+    )
+    _state(context)["ambiguous"] = _exchange(
+        packet, xid, lease["mac"], {2, 5, 6}, stop_first=False,
+    )
+
+
+@then("the ambiguous renewal receives no acknowledgement")
+def step_factory_no_ambiguous_ack(context):
+    assert not [p for p in _state(context)["ambiguous"] if _message_type(p) in {2, 5}]
+
+
+@then("authoritative factory leases remain unchanged")
+def step_factory_unchanged(context):
+    assert _snapshot(context) == _state(context)["baseline"]
+
+
+@when("the factory adapter restarts the service preserving storage")
+def step_factory_restart(context):
+    _lifecycle_adapter("restart")
