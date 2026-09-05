@@ -157,6 +157,29 @@ as a known divergence instead of treating it as a passing implementation.
 
 ## Capability adapters
 
+Factory lifecycle scenarios additionally require `factory_lifecycle` and
+`TEST_FACTORY_LIFECYCLE_COMMAND`. The factory runner enables this capability
+when the command is supplied. It executes the command with one argument:
+`reset`, `settle`, `snapshot`, or `restart`. Use only a disposable target fixture.
+`reset` clears its three factory pools; `settle` waits for previously sent
+RELEASE/DECLINE processing; `restart` actually stops and starts the service,
+preserves storage, and waits for readiness. Each action has a 30-second timeout.
+`snapshot` prints a JSON array of authoritative active/quarantined bindings,
+with exactly `factory`, `address`, `state` (`active` or `declined`), `client_id`
+(lowercase hex), `mac` (colon notation), and `expires_at` (absolute expiry).
+Omit released/free entries. Do not return decreasing remaining lifetimes.
+The adapter must read real server state and must not synthesize expected rows.
+
+The four lifecycle scenarios use identical MAC/client IDs across all factories,
+verify RELEASE and reuse affect only A, verify DECLINE quarantines only A,
+reject allocation for an ambiguous unicast renewal, and compare persistent
+bindings before/after restart before sending any recovery requests. Configure
+lease and quarantine durations long enough to cover the run (at least 120 s).
+For the ambiguity scenario, the shared server endpoint must provide no trusted
+VRF, destination-address, or ingress-interface factory discriminator. These
+tests simulate server-bound relay traffic, not physical switch forwarding.
+Live validation requires the target service and its adapter.
+
 Capabilities are skipped unless their name is present in the comma-separated
 `TEST_CAPABILITIES` value. This prevents an absent optional feature from being
 reported as a pass.
