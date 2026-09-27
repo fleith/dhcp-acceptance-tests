@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from summarize_junit import read_reports
+from summarize_junit import RUN_STATUS_FILE, read_reports
 
 
 def get_interface_info(iface, family):
@@ -149,7 +149,10 @@ print(
     flush=True,
 )
 
+run_status = Path(results_dir) / RUN_STATUS_FILE
+run_status.write_text('running\n', encoding='utf-8')
 result = subprocess.run([sys.executable, '-m', 'behave'] + behave_args, env=env)
+run_status.write_text(f'{result.returncode}\n', encoding='utf-8')
 
 # The runner is root; hand the reports back to the owner of the bind-mounted checkout.
 checkout_owner = os.stat('.')

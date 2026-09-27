@@ -7,6 +7,11 @@ try:
 except ImportError:
     AsyncSniffer = BOOTP = DHCP = Ether = IP = UDP = None
 
+# Per-scenario state for dhcp_steps.py. It lives in a regular module so the
+# environment hooks and the step functions (which behave loads with exec, not
+# import) share one dictionary.
+context_storage = {}
+
 
 def require_scapy_v4():
     if Ether is None:

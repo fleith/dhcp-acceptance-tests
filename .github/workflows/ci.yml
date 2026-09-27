@@ -923,8 +923,7 @@ jobs:
             server_version: isc-final
             ip_version: v4
             extra_args: ""
-            expected_failure_pattern: ""
-            expected_failure_pattern_2: ""
+            expected_failure: ""
             expected_log_pattern: ""
             artifact_suffix: full
           - name: ISC DHCP 4.4.3-P1 / v6
@@ -932,8 +931,7 @@ jobs:
             server_version: isc-final
             ip_version: v6
             extra_args: ""
-            expected_failure_pattern: ""
-            expected_failure_pattern_2: ""
+            expected_failure: ""
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.0.3 LTS / v4
@@ -941,8 +939,7 @@ jobs:
             server_version: kea-lts
             ip_version: v4
             extra_args: ""
-            expected_failure_pattern: dhcp_rfc3442_classless_routes
-            expected_failure_pattern_2: ""
+            expected_failure: "Server returns configured classless routes in OFFER and ACK"
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.0.3 LTS / v6
@@ -950,8 +947,7 @@ jobs:
             server_version: kea-lts
             ip_version: v6
             extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_isolated"
-            expected_failure_pattern: ""
-            expected_failure_pattern_2: ""
+            expected_failure: ""
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.0.3 LTS / v6 truncated relay Interface-ID
@@ -959,8 +955,7 @@ jobs:
             server_version: kea-lts
             ip_version: v6
             extra_args: "--tags @kea3_truncated_interface_id"
-            expected_failure_pattern: ""
-            expected_failure_pattern_2: ""
+            expected_failure: ""
             expected_log_pattern: ""
             artifact_suffix: truncated-interface-id
           - name: Kea 3.2.0 stable / v4
@@ -968,8 +963,7 @@ jobs:
             server_version: kea-stable
             ip_version: v4
             extra_args: ""
-            expected_failure_pattern: dhcp_rfc3442_classless_routes
-            expected_failure_pattern_2: ""
+            expected_failure: "Server returns configured classless routes in OFFER and ACK"
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.2.0 stable / v6
@@ -977,8 +971,7 @@ jobs:
             server_version: kea-stable
             ip_version: v6
             extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_isolated"
-            expected_failure_pattern: ""
-            expected_failure_pattern_2: ""
+            expected_failure: ""
             expected_log_pattern: ""
             artifact_suffix: full
           - name: Kea 3.2.0 stable / v6 truncated relay Interface-ID
@@ -986,8 +979,7 @@ jobs:
             server_version: kea-stable
             ip_version: v6
             extra_args: "--tags @kea3_truncated_interface_id"
-            expected_failure_pattern: ""
-            expected_failure_pattern_2: ""
+            expected_failure: ""
             expected_log_pattern: ""
             artifact_suffix: truncated-interface-id
           - name: Kea baseline / IPv4 known divergences
@@ -995,8 +987,7 @@ jobs:
             server_version: baseline
             ip_version: v4
             extra_args: "--tags @known_divergence --tags @ipv4"
-            expected_failure_pattern: ""
-            expected_failure_pattern_2: ""
+            expected_failure: ""
             expected_log_pattern: ""
             artifact_suffix: known-divergences
           - name: Kea baseline / IPv6 known divergences
@@ -1004,8 +995,7 @@ jobs:
             server_version: baseline
             ip_version: v6
             extra_args: "--tags @known_divergence --tags @ipv6"
-            expected_failure_pattern: ""
-            expected_failure_pattern_2: ""
+            expected_failure: ""
             expected_log_pattern: ""
             artifact_suffix: known-divergences
     steps:
@@ -1014,7 +1004,7 @@ jobs:
 
       - name: Run informational compatibility tests
         id: compatibility-tests
-        continue-on-error: ${{ matrix.expected_failure_pattern != '' }}
+        continue-on-error: ${{ matrix.expected_failure != '' }}
         run: |
           set -o pipefail
           bash ./run_dhcp_tests.sh \
@@ -1034,8 +1024,7 @@ jobs:
           --results test-results
           --title "Informational / ${{ matrix.name }}"
           --run-outcome "${{ steps.compatibility-tests.outcome }}"
-          ${{ matrix.expected_failure_pattern != '' && format('--expected-failure-pattern {0}', matrix.expected_failure_pattern) || '' }}
-          ${{ matrix.expected_failure_pattern_2 != '' && format('--expected-failure-pattern {0}', matrix.expected_failure_pattern_2) || '' }}
+          ${{ matrix.expected_failure != '' && format('--expected-failure "{0}"', matrix.expected_failure) || '' }}
           ${{ matrix.expected_log_pattern != '' && format('--log-file compatibility.log --expected-log-pattern {0}', matrix.expected_log_pattern) || '' }}
 
       - name: Upload compatibility JUnit reports

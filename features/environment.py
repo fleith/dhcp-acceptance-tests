@@ -78,6 +78,10 @@ def before_scenario(context, scenario):
         'reference_reserved_iid_pool_divergence': {('kea', '*')},
         'reference_malformed_option_tail_divergence': {('kea', '*')},
         'reference_malformed_dhcpv6_information_divergence': {('kea', '*')},
+        'kea_released_address_reuse_divergence': {('kea', 'baseline')},
+        'reference_rfc4361_truncated_identifier_divergence': {
+            ('isc', '*'), ('isc-dhcpd', '*'), ('kea', '*')
+        },
         'reference_disabled_rebind_policy_divergence': {
             ('isc', '*'), ('isc-dhcpd', '*'), ('kea', '*')
         },
