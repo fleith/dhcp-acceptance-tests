@@ -1,0 +1,47 @@
+name: Run a DHCP acceptance suite
+description: Run a test command, publish the JUnit summary, and upload the reports.
+
+inputs:
+  command:
+    description: Shell commands that run the suite. The run_*.sh scripts tear down their own containers.
+    required: true
+  title:
+    description: Summary title.
+    required: true
+  artifact-name:
+    description: Name of the uploaded report artifact.
+    required: true
+  artifact-path:
+    description: Files to upload.
+    default: test-results
+  expected-failure:
+    description: Exact name of a scenario expected to fail; the summary then decides the outcome.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Run tests
+      id: tests
+      shell: bash
+      continue-on-error: ${{ inputs.expected-failure != '' }}
+      run: ${{ inputs.command }}
+
+    - name: Publish test summary
+      if: always()
+      shell: bash
+      run: >-
+        python3 summarize_junit.py
+        --results test-results
+        --title "${{ inputs.title }}"
+        --run-outcome "${{ steps.tests.outcome }}"
+        ${{ inputs.expected-failure != '' && format('--expected-failure "{0}"', inputs.expected-failure) || '' }}
+
+    - name: Upload reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.artifact-path }}
+        if-no-files-found: warn
+        retention-days: 14

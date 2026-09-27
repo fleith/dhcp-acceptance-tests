@@ -17,15 +17,10 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
+source "${SCRIPT_DIR}/lib/common.sh"
 
-# Git Bash rewrites container paths such as /app before invoking Docker.
-case "$(uname -s)" in
-  MINGW*|MSYS*)
-    export MSYS2_ENV_CONV_EXCL="TEST_RESULTS_DIR;DHCPV4_SERVER_LOG_FILE;TEST_DHCPV4_SERVER_LOG_FILE${MSYS2_ENV_CONV_EXCL:+;${MSYS2_ENV_CONV_EXCL}}"
-    ;;
-esac
 
 SERVER="isc-dhcpd"
 IP_VERSION="v4"
@@ -75,25 +70,13 @@ done
 
 build_compose_files() {
   local mode="$1"
-  COMPOSE_FILES=(-f "${PROJECT_ROOT}/docker-compose.yml")
-
-  case "$SERVER" in
-    isc-dhcpd)
-      ;;
-    kea)
-      COMPOSE_FILES+=(-f "${PROJECT_ROOT}/docker-compose.kea.yml")
-      ;;
-    *)
-      echo "[ERROR] Unsupported server '$SERVER'. Use 'isc-dhcpd' or 'kea'."
-      exit 2
-      ;;
-  esac
-
+  select_server_profile "$SERVER" "$SERVER_VERSION" "$mode"
+  
   case "$mode" in
     v4)
       ;;
     v6)
-      COMPOSE_FILES+=(-f "${PROJECT_ROOT}/docker-compose.ipv6.yml")
+      COMPOSE+=(-f "${PROJECT_ROOT}/docker-compose.ipv6.yml")
       ;;
     *)
       echo "[ERROR] Unsupported mode '$mode'. Use 'v4' or 'v6'."
@@ -101,7 +84,7 @@ build_compose_files() {
       ;;
   esac
 
-  COMPOSE_FILES+=("${ADDITIONAL_COMPOSE_FILES[@]}")
+  COMPOSE+=("${ADDITIONAL_COMPOSE_FILES[@]}")
 }
 
 configure_version_profile() {
@@ -111,40 +94,12 @@ configure_version_profile() {
   unset TEST_RESULTS_DIR
   export TEST_SERVER_VERSION="$SERVER_VERSION"
 
+  # select_server_profile validates the server/version pair.
   case "$SERVER_VERSION" in
-    baseline)
-      VERSION_LABEL="distribution baseline"
-      ;;
-    isc-final)
-      [[ "$SERVER" == "isc-dhcpd" ]] || {
-        echo "[ERROR] isc-final requires --server isc-dhcpd"
-        exit 2
-      }
-      export ISC_DHCP_BASE_IMAGE="debian:bookworm-slim"
-      VERSION_LABEL="ISC DHCP 4.4.3-P1 final release line"
-      ;;
-    kea-lts|kea-stable)
-      [[ "$SERVER" == "kea" ]] || {
-        echo "[ERROR] $SERVER_VERSION requires --server kea"
-        exit 2
-      }
-      local kea_version
-      if [[ "$SERVER_VERSION" == "kea-lts" ]]; then
-        kea_version="3.0.3"
-        VERSION_LABEL="Kea 3.0.3 LTS"
-      else
-        kea_version="3.2.0"
-        VERSION_LABEL="Kea 3.2.0 stable"
-      fi
-      export KEA_BASE_IMAGE="docker.cloudsmith.io/isc/docker/kea-dhcp${mode#v}:${kea_version}"
-      export KEA_DDNS_IMAGE="docker.cloudsmith.io/isc/docker/kea-dhcp-ddns:${kea_version}"
-      export KEA_INSTALL_MODE="alpine"
-      ;;
-    *)
-      echo "[ERROR] Unsupported server version '$SERVER_VERSION'." \
-           "Use baseline, isc-final, kea-lts, or kea-stable."
-      exit 2
-      ;;
+    baseline) VERSION_LABEL="distribution baseline" ;;
+    isc-final) VERSION_LABEL="ISC DHCP 4.4.3-P1 final release line" ;;
+    kea-lts) VERSION_LABEL="Kea ${KEA_LTS_VERSION} LTS" ;;
+    kea-stable) VERSION_LABEL="Kea ${KEA_STABLE_VERSION} stable" ;;
   esac
 
   # Tag-filtered runs get their own results directory so they don't replace the full run's reports.
@@ -167,6 +122,15 @@ configure_version_profile() {
   export TEST_RESULTS_DIR="/app/test-results/${SERVER}-${SERVER_VERSION}-${mode}${results_suffix:+-${results_suffix}}"
 }
 
+COMPOSE=()
+stop_stack() {
+  if (( ${#COMPOSE[@]} > 0 )); then
+    compose_down
+  fi
+}
+# Also tear down when interrupted or when a step fails under set -e.
+trap stop_stack EXIT
+
 run_once() {
   local mode="$1"
   local rc=0
@@ -178,14 +142,13 @@ run_once() {
   # Build arguments select the requested server release profile.
   up_args+=(--build)
 
-  # Create bind-mount sources as the invoking user; Docker would create them as root.
-  mkdir -p "${PROJECT_ROOT}/test-state" "${PROJECT_ROOT}/test-results"
+  ensure_host_dirs
 
   echo "[INFO] Running tests against server=${SERVER} ip_version=${mode} version=${VERSION_LABEL}"
-  docker compose "${COMPOSE_FILES[@]}" up "${up_args[@]}" "${EXTRA_ARGS[@]}" || rc=$?
+  docker compose "${COMPOSE[@]}" up "${up_args[@]}" "${EXTRA_ARGS[@]}" || rc=$?
 
   echo "[INFO] Stopping docker compose stack for ip_version=${mode}..."
-  docker compose "${COMPOSE_FILES[@]}" down >/dev/null 2>&1 || true
+  stop_stack
 
   return $rc
 }

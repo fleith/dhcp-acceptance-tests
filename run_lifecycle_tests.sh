@@ -3,7 +3,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
 SERVER="isc-dhcpd"
 
 while [[ $# -gt 0 ]]; do
@@ -20,40 +21,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-COMPOSE=(-f "${SCRIPT_DIR}/docker-compose.yml")
-case "$SERVER" in
-  isc-dhcpd)
-    ;;
-  kea)
-    COMPOSE+=(-f "${SCRIPT_DIR}/docker-compose.kea.yml")
-    ;;
-  *)
-    echo "[ERROR] Unsupported server '$SERVER'. Use isc-dhcpd or kea."
-    exit 2
-    ;;
-esac
+select_server_profile "$SERVER" baseline
 
 export DHCPV4_POOL_START_OFFSET=190
 export DHCPV4_POOL_END_OFFSET=191
 export DHCPV4_ALT_POOL_ENABLED=0
 
 cleanup() {
-  docker compose "${COMPOSE[@]}" down >/dev/null 2>&1 || true
+  compose_down
 }
 trap cleanup EXIT
-
-wait_for_health() {
-  local attempt
-  for attempt in $(seq 1 40); do
-    if [[ "$(docker inspect --format '{{.State.Health.Status}}' dhcp-test-server 2>/dev/null || true)" == "healthy" ]]; then
-      return 0
-    fi
-    sleep 0.5
-  done
-  docker compose "${COMPOSE[@]}" logs --no-color dhcp-server
-  echo "[ERROR] DHCP server did not become healthy"
-  return 1
-}
 
 run_phase() {
   local phase="$1"
@@ -66,7 +43,7 @@ run_phase() {
     test-runner < /dev/null
 }
 
-mkdir -p "${SCRIPT_DIR}/test-state" "${SCRIPT_DIR}/test-results"
+ensure_host_dirs
 
 echo "[INFO] Starting persistent lifecycle fixture for server=${SERVER}"
 docker compose "${COMPOSE[@]}" build dhcp-server test-runner

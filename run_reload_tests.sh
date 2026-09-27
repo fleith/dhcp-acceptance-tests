@@ -3,21 +3,22 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+select_server_profile kea kea-stable
 STATE_DIR="${SCRIPT_DIR}/test-state"
 REQUEST="${STATE_DIR}/reload.request"
 COMPLETE="${STATE_DIR}/reload.complete"
 TEST_PID=""
 
-mkdir -p "$STATE_DIR"
+ensure_host_dirs
 rm -f "$REQUEST" "$COMPLETE"
 
 cleanup() {
   if [[ -n "$TEST_PID" ]] && kill -0 "$TEST_PID" 2>/dev/null; then
     kill "$TEST_PID" 2>/dev/null || true
   fi
-  docker compose -f "${SCRIPT_DIR}/docker-compose.yml" \
-    -f "${SCRIPT_DIR}/docker-compose.kea.yml" down -v >/dev/null 2>&1 || true
+  compose_down
   rm -f "$REQUEST" "$COMPLETE"
 }
 trap cleanup EXIT
@@ -63,4 +64,4 @@ fi
 
 wait "$TEST_PID"
 TEST_PID=""
-echo "[INFO] Live configuration reload profile passed for Kea 3.2.0"
+echo "[INFO] Live configuration reload profile passed for Kea ${KEA_STABLE_VERSION}"

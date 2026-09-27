@@ -89,8 +89,6 @@ class ConformanceProfileTests(unittest.TestCase):
         self.assertIn("run_dhcpv6_rebind_ownership_tests.sh", job)
         self.assertIn("server_version: kea-lts", job)
         self.assertIn("server_version: kea-stable", job)
-        self.assertIn("docker-compose.ipv6-reserved-iid.yml down -v", job)
-        self.assertIn("docker-compose.ipv6-request-observability.yml down -v", job)
 
     def test_reserved_iid_topology_covers_registry_boundaries(self):
         topology = RESERVED_IID_TOPOLOGY.read_text(encoding="utf-8").lower()
@@ -162,8 +160,6 @@ class ConformanceProfileTests(unittest.TestCase):
             "run_ha_tests.sh",
         ):
             self.assertIn(runner, job)
-
-        self.assertIn("chmod 0777 test-state", job)
 
         for identifier in (
             "GAP-DHCPV4-OFFER-HOLD-BOUNDARY",

@@ -13,6 +13,7 @@ jobs:
   test:
     name: Required / ${{ matrix.server }} / ${{ matrix.ip_version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -28,35 +29,16 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Run tests
-        id: required-tests
-        run: bash ./run_dhcp_tests.sh --server ${{ matrix.server }} --ip-version ${{ matrix.ip_version }}
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish test summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Required / ${{ matrix.server }} / ${{ matrix.ip_version }}"
-          --run-outcome "${{ steps.required-tests.outcome }}"
-
-      - name: Upload JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: required-${{ matrix.server }}-${{ matrix.ip_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_dhcp_tests.sh --server ${{ matrix.server }} --ip-version ${{ matrix.ip_version }}
+          title: Required / ${{ matrix.server }} / ${{ matrix.ip_version }}
+          artifact-name: required-${{ matrix.server }}-${{ matrix.ip_version }}-${{ github.run_attempt }}
 
   pool-exhaustion:
     name: Required / ${{ matrix.server }} / v4 pool exhaustion
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -68,39 +50,16 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Exhaust and recover the bounded DHCPv4 pool
-        id: pool-tests
-        run: >-
-          bash ./run_dhcp_tests.sh
-          --server ${{ matrix.server }}
-          --ip-version v4
-          --tags @pool_exhaustion
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish pool-exhaustion summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Required / ${{ matrix.server }} / v4 pool exhaustion"
-          --run-outcome "${{ steps.pool-tests.outcome }}"
-
-      - name: Upload pool-exhaustion JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: pool-exhaustion-${{ matrix.server }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_dhcp_tests.sh --server ${{ matrix.server }} --ip-version v4 --tags @pool_exhaustion
+          title: Required / ${{ matrix.server }} / v4 pool exhaustion
+          artifact-name: pool-exhaustion-${{ matrix.server }}-${{ github.run_attempt }}
 
   rfc8925-zero-default:
     name: RFC 8925 zero-default / ${{ matrix.server }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -111,35 +70,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Verify the four-octet zero V6ONLY_WAIT fallback
-        id: rfc8925-zero-tests
-        run: >-
-          bash ./run_dhcp_tests.sh
-          --server ${{ matrix.server }}
-          --ip-version v4
-          --tags @rfc8925_zero_default
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish RFC 8925 zero-default summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "RFC 8925 zero-default / ${{ matrix.server }}"
-          --run-outcome "${{ steps.rfc8925-zero-tests.outcome }}"
-
-      - name: Upload RFC 8925 zero-default JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: rfc8925-zero-default-${{ matrix.server }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_dhcp_tests.sh --server ${{ matrix.server }} --ip-version v4 --tags @rfc8925_zero_default
+          title: RFC 8925 zero-default / ${{ matrix.server }}
+          artifact-name: rfc8925-zero-default-${{ matrix.server }}-${{ github.run_attempt }}
 
   ipv4-observability:
     name: IPv4 observability / ${{ matrix.name }}
@@ -158,38 +93,14 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Verify administrative, addressless, and live DDNS behavior
-        id: ipv4-observability-tests
-        run: >-
-          bash ./run_ipv4_observability_tests.sh
-          --server ${{ matrix.server }}
-          --server-version ${{ matrix.server_version }}
-
-      - name: Tear down observability fixtures
-        if: always()
-        run: |
-          docker compose -f docker-compose.yml -f docker-compose.ddns.yml down -v
-          docker compose down -v
-
-      - name: Publish IPv4 observability summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "IPv4 observability / ${{ matrix.name }}"
-          --run-outcome "${{ steps.ipv4-observability-tests.outcome }}"
-
-      - name: Upload observability reports and server evidence
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: ipv4-observability-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: |
+          command: bash ./run_ipv4_observability_tests.sh --server ${{ matrix.server }} --server-version ${{ matrix.server_version }}
+          title: IPv4 observability / ${{ matrix.name }}
+          artifact-name: ipv4-observability-${{ matrix.server_version }}-${{ github.run_attempt }}
+          artifact-path: |-
             test-results
             test-state/dhcpv4-server.log
-          if-no-files-found: warn
-          retention-days: 14
 
   dhcpv6-rfc4704:
     name: DHCPv6 RFC 4704 / ${{ matrix.name }}
@@ -206,35 +117,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Verify DHCPv6 Client FQDN DDNS lifecycle
-        id: rfc4704-tests
-        run: >-
-          bash ./run_dhcpv6_rfc4704_tests.sh
-          --server-version ${{ matrix.server_version }}
-
-      - name: Tear down DHCPv6 DDNS fixtures
-        if: always()
-        run: >-
-          docker compose -f docker-compose.yml -f docker-compose.kea.yml
-          -f docker-compose.ipv6.yml -f docker-compose.ipv6-ddns.yml down -v
-
-      - name: Publish DHCPv6 RFC 4704 summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "DHCPv6 RFC 4704 / ${{ matrix.name }}"
-          --run-outcome "${{ steps.rfc4704-tests.outcome }}"
-
-      - name: Upload DHCPv6 RFC 4704 JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: dhcpv6-rfc4704-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_dhcpv6_rfc4704_tests.sh --server-version ${{ matrix.server_version }}
+          title: DHCPv6 RFC 4704 / ${{ matrix.name }}
+          artifact-name: dhcpv6-rfc4704-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   dhcpv6-interface-id-policy:
     name: DHCPv6 Interface-ID policy / ${{ matrix.name }}
@@ -251,35 +138,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Verify opaque Interface-ID assignment policy
-        id: interface-id-tests
-        run: >-
-          bash ./run_dhcpv6_interface_id_tests.sh
-          --server-version ${{ matrix.server_version }}
-
-      - name: Tear down DHCPv6 Interface-ID fixtures
-        if: always()
-        run: >-
-          docker compose -f docker-compose.yml -f docker-compose.kea.yml
-          -f docker-compose.ipv6.yml -f docker-compose.ipv6-interface-id.yml down -v
-
-      - name: Publish DHCPv6 Interface-ID policy summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "DHCPv6 Interface-ID policy / ${{ matrix.name }}"
-          --run-outcome "${{ steps.interface-id-tests.outcome }}"
-
-      - name: Upload DHCPv6 Interface-ID policy JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: dhcpv6-interface-id-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_dhcpv6_interface_id_tests.sh --server-version ${{ matrix.server_version }}
+          title: DHCPv6 Interface-ID policy / ${{ matrix.name }}
+          artifact-name: dhcpv6-interface-id-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   dhcpv6-reserved-iid-pools:
     name: DHCPv6 focused RFC 9915 / ${{ matrix.name }}
@@ -296,43 +159,17 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Verify reserved-IID allocation, REQUEST regeneration, and REBIND ownership
-        id: focused-rfc9915-tests
-        run: |
-          bash ./run_dhcpv6_reserved_iid_tests.sh \
-            --server-version ${{ matrix.server_version }}
-          bash ./run_dhcpv6_request_regeneration_tests.sh \
-            --server-version ${{ matrix.server_version }}
-          bash ./run_dhcpv6_rebind_ownership_tests.sh \
-            --server-version ${{ matrix.server_version }}
-
-      - name: Tear down focused DHCPv6 RFC 9915 fixtures
-        if: always()
-        run: |
-          docker compose -f docker-compose.yml -f docker-compose.kea.yml \
-            -f docker-compose.ipv6.yml -f docker-compose.ipv6-reserved-iid.yml down -v
-          docker compose -f docker-compose.yml -f docker-compose.kea.yml \
-            -f docker-compose.ipv6.yml -f docker-compose.ipv6-request-observability.yml down -v
-          docker compose -f docker-compose.yml -f docker-compose.kea.yml \
-            -f docker-compose.ipv6.yml down -v
-
-      - name: Publish focused DHCPv6 RFC 9915 summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "DHCPv6 focused RFC 9915 / ${{ matrix.name }}"
-          --run-outcome "${{ steps.focused-rfc9915-tests.outcome }}"
-
-      - name: Upload focused DHCPv6 RFC 9915 JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: dhcpv6-focused-rfc9915-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: |-
+            bash ./run_dhcpv6_reserved_iid_tests.sh \
+              --server-version ${{ matrix.server_version }}
+            bash ./run_dhcpv6_request_regeneration_tests.sh \
+              --server-version ${{ matrix.server_version }}
+            bash ./run_dhcpv6_rebind_ownership_tests.sh \
+              --server-version ${{ matrix.server_version }}
+          title: DHCPv6 focused RFC 9915 / ${{ matrix.name }}
+          artifact-name: dhcpv6-focused-rfc9915-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   ipv4-operational-capabilities:
     name: IPv4 operational capabilities / Kea 3.2.0
@@ -341,49 +178,20 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Prepare operational action directory
-        run: |
-          mkdir -p test-state
-          chmod 0777 test-state
-
-      - name: Verify offer expiry, reload, multiple interfaces, and HA
-        id: operational-tests
-        run: |
-          bash ./run_offer_hold_boundary_tests.sh
-          bash ./run_reload_tests.sh
-          bash ./run_multi_interface_tests.sh
-          bash ./run_ha_tests.sh
-
-      - name: Tear down operational fixtures
-        if: always()
-        run: |
-          docker compose -f docker-compose.yml -f docker-compose.kea.yml \
-            -f docker-compose.multi-interface.yml down -v
-          docker compose -f docker-compose.yml -f docker-compose.kea.yml \
-            -f docker-compose.ha.yml down -v
-          docker compose down -v
-
-      - name: Publish operational capability summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "IPv4 operational capabilities / Kea 3.2.0"
-          --run-outcome "${{ steps.operational-tests.outcome }}"
-
-      - name: Upload operational capability reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: ipv4-operational-capabilities-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: |-
+            bash ./run_offer_hold_boundary_tests.sh
+            bash ./run_reload_tests.sh
+            bash ./run_multi_interface_tests.sh
+            bash ./run_ha_tests.sh
+          title: IPv4 operational capabilities / Kea 3.2.0
+          artifact-name: ipv4-operational-capabilities-${{ github.run_attempt }}
 
   focused-robustness:
     name: Focused robustness / ${{ matrix.server }} / ${{ matrix.ip_version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -397,40 +205,38 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Run bounded malformed, load, and churn checks
-        id: robustness-tests
-        run: >-
-          bash ./run_dhcp_tests.sh
-          --server ${{ matrix.server }}
-          --ip-version ${{ matrix.ip_version }}
-          --tags @focused_robustness
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish focused-robustness summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Focused robustness / ${{ matrix.server }} / ${{ matrix.ip_version }}"
-          --run-outcome "${{ steps.robustness-tests.outcome }}"
-
-      - name: Upload focused-robustness JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: focused-robustness-${{ matrix.server }}-${{ matrix.ip_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_dhcp_tests.sh --server ${{ matrix.server }} --ip-version ${{ matrix.ip_version }} --tags @focused_robustness
+          title: Focused robustness / ${{ matrix.server }} / ${{ matrix.ip_version }}
+          artifact-name: focused-robustness-${{ matrix.server }}-${{ matrix.ip_version }}-${{ github.run_attempt }}
+
+  dhcpv6-server-policy:
+    name: DHCPv6 server policy / ${{ matrix.server }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        server: [isc-dhcpd, kea]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - uses: ./.github/actions/dhcp-suite
+        with:
+          command: |-
+            rc=0
+            bash ./run_dhcpv6_preference_tests.sh --server ${{ matrix.server }} || rc=$?
+            bash ./run_dhcpv6_rebind_policy_tests.sh --server ${{ matrix.server }} || rc=$?
+            exit $rc
+          title: DHCPv6 server policy / ${{ matrix.server }}
+          artifact-name: dhcpv6-server-policy-${{ matrix.server }}-${{ github.run_attempt }}
 
   runtime-storage-fault:
     name: Runtime storage fault / ${{ matrix.name }}
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -444,41 +250,17 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Exhaust lease storage and verify forced-restart recovery
-        id: storage-fault-tests
-        run: >-
-          bash ./run_storage_fault_tests.sh
-          --server ${{ matrix.server }}
-          --server-version ${{ matrix.server_version }}
-
-      - name: Tear down storage-fault fixture
-        if: always()
-        run: |
-          docker rm -f dhcp-storage-fault-runner 2>/dev/null || true
-          docker compose -f docker-compose.yml -f docker-compose.storage-fault.yml down -v
-
-      - name: Publish storage-fault summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Runtime storage fault / ${{ matrix.name }}"
-          --run-outcome "${{ steps.storage-fault-tests.outcome }}"
-
-      - name: Upload storage-fault reports, metrics, and server evidence
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: runtime-storage-fault-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_storage_fault_tests.sh --server ${{ matrix.server }} --server-version ${{ matrix.server_version }}
+          title: Runtime storage fault / ${{ matrix.name }}
+          artifact-name: runtime-storage-fault-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   stress-crash-smoke:
     name: Stress crash smoke / ${{ matrix.name }}
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -492,40 +274,17 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Crash the server during mixed DHCPv4 load
-        id: stress-crash-tests
-        run: >-
-          bash ./run_stress_crash_tests.sh
-          --server ${{ matrix.server }}
-          --server-version ${{ matrix.server_version }}
-          --profile smoke
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish stress-crash summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Stress crash smoke / ${{ matrix.name }}"
-          --run-outcome "${{ steps.stress-crash-tests.outcome }}"
-
-      - name: Upload stress reports and metrics
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: stress-crash-smoke-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_stress_crash_tests.sh --server ${{ matrix.server }} --server-version ${{ matrix.server_version }} --profile smoke
+          title: Stress crash smoke / ${{ matrix.name }}
+          artifact-name: stress-crash-smoke-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   stress-crash-scheduled:
     name: Scheduled stress crash / ${{ matrix.name }}
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -539,35 +298,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Run the scheduled mixed-load crash profile
-        id: scheduled-stress-tests
-        run: >-
-          bash ./run_stress_crash_tests.sh
-          --server ${{ matrix.server }}
-          --server-version ${{ matrix.server_version }}
-          --profile scheduled
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish scheduled stress summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Scheduled stress crash / ${{ matrix.name }}"
-          --run-outcome "${{ steps.scheduled-stress-tests.outcome }}"
-
-      - name: Upload scheduled stress reports and metrics
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: stress-crash-scheduled-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_stress_crash_tests.sh --server ${{ matrix.server }} --server-version ${{ matrix.server_version }} --profile scheduled
+          title: Scheduled stress crash / ${{ matrix.name }}
+          artifact-name: stress-crash-scheduled-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   dhcpv4-soak-scheduled:
     name: Scheduled DHCPv4 soak / ${{ matrix.name }}
@@ -587,35 +322,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Run lease churn with resource sampling
-        id: soak-tests
-        run: >-
-          bash ./run_soak_tests.sh
-          --server ${{ matrix.server }}
-          --server-version ${{ matrix.server_version }}
-          --profile scheduled
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish soak summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Scheduled DHCPv4 soak / ${{ matrix.name }}"
-          --run-outcome "${{ steps.soak-tests.outcome }}"
-
-      - name: Upload soak reports and resource metrics
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: dhcpv4-soak-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_soak_tests.sh --server ${{ matrix.server }} --server-version ${{ matrix.server_version }} --profile scheduled
+          title: Scheduled DHCPv4 soak / ${{ matrix.name }}
+          artifact-name: dhcpv4-soak-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   dhcpv4-capacity-smoke:
     name: Large-pool capacity smoke / ${{ matrix.name }}
@@ -635,35 +346,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Fill renew exhaust and recycle a 256-address pool
-        id: capacity-tests
-        run: >-
-          bash ./run_capacity_tests.sh
-          --server ${{ matrix.server }}
-          --server-version ${{ matrix.server_version }}
-          --profile smoke
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.capacity.yml down -v
-
-      - name: Publish capacity summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Large-pool capacity smoke / ${{ matrix.name }}"
-          --run-outcome "${{ steps.capacity-tests.outcome }}"
-
-      - name: Upload capacity reports and resource metrics
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: dhcpv4-capacity-smoke-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_capacity_tests.sh --server ${{ matrix.server }} --server-version ${{ matrix.server_version }} --profile smoke
+          title: Large-pool capacity smoke / ${{ matrix.name }}
+          artifact-name: dhcpv4-capacity-smoke-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   dhcpv4-capacity-scheduled:
     name: Scheduled large-pool capacity / ${{ matrix.name }}
@@ -683,35 +370,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Fill renew exhaust and recycle a 1024-address pool
-        id: capacity-tests
-        run: >-
-          bash ./run_capacity_tests.sh
-          --server ${{ matrix.server }}
-          --server-version ${{ matrix.server_version }}
-          --profile scheduled
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.capacity.yml down -v
-
-      - name: Publish scheduled capacity summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Scheduled large-pool capacity / ${{ matrix.name }}"
-          --run-outcome "${{ steps.capacity-tests.outcome }}"
-
-      - name: Upload scheduled capacity reports and resource metrics
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: dhcpv4-capacity-scheduled-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_capacity_tests.sh --server ${{ matrix.server }} --server-version ${{ matrix.server_version }} --profile scheduled
+          title: Scheduled large-pool capacity / ${{ matrix.name }}
+          artifact-name: dhcpv4-capacity-scheduled-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   dhcpv4-capacity-endurance:
     name: Manual capacity endurance / ${{ matrix.name }}
@@ -734,39 +397,16 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Run duration-based capacity churn
-        id: capacity-tests
-        run: >-
-          bash ./run_capacity_tests.sh
-          --server ${{ matrix.server }}
-          --server-version ${{ matrix.server_version }}
-          --profile endurance
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.capacity.yml down -v
-
-      - name: Publish endurance summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Manual capacity endurance / ${{ matrix.name }}"
-          --run-outcome "${{ steps.capacity-tests.outcome }}"
-
-      - name: Upload endurance reports and resource metrics
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: dhcpv4-capacity-endurance-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_capacity_tests.sh --server ${{ matrix.server }} --server-version ${{ matrix.server_version }} --profile endurance
+          title: Manual capacity endurance / ${{ matrix.name }}
+          artifact-name: dhcpv4-capacity-endurance-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   server-ping-check:
     name: RFC 2131 ping check / ${{ matrix.name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -780,38 +420,16 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Probe silent and responding candidate addresses
-        id: ping-check-tests
-        run: >-
-          bash ./run_ping_check_tests.sh
-          --server ${{ matrix.server }}
-          --server-version ${{ matrix.server_version }}
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish server ping-check summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "RFC 2131 ping check / ${{ matrix.name }}"
-          --run-outcome "${{ steps.ping-check-tests.outcome }}"
-
-      - name: Upload server ping-check JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: server-ping-check-${{ matrix.server }}-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_ping_check_tests.sh --server ${{ matrix.server }} --server-version ${{ matrix.server_version }}
+          title: RFC 2131 ping check / ${{ matrix.name }}
+          artifact-name: server-ping-check-${{ matrix.server }}-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   overlapping-subnet-leases:
     name: Overlapping subnet leases / ${{ matrix.name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -823,38 +441,16 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Verify lease selection in both subnet declaration orders
-        id: overlap-lease-tests
-        run: >-
-          bash ./run_overlap_lease_tests.sh
-          --server kea
-          --server-version ${{ matrix.server_version }}
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish overlapping-subnet summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Overlapping subnet leases / ${{ matrix.name }}"
-          --run-outcome "${{ steps.overlap-lease-tests.outcome }}"
-
-      - name: Upload overlapping-subnet JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: overlapping-subnet-leases-${{ matrix.server_version }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: bash ./run_overlap_lease_tests.sh --server kea --server-version ${{ matrix.server_version }}
+          title: Overlapping subnet leases / ${{ matrix.name }}
+          artifact-name: overlapping-subnet-leases-${{ matrix.server_version }}-${{ github.run_attempt }}
 
   lifecycle-safety:
     name: Lifecycle and safety / ${{ matrix.server }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -866,53 +462,30 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Verify graceful and abrupt restart recovery
-        id: lifecycle-tests
-        run: bash ./run_lifecycle_tests.sh --server ${{ matrix.server }}
-
-      - name: Verify configuration safety policy
-        id: safety-tests
-        if: always()
-        run: >-
-          bash ./run_config_safety_tests.sh
-          --server ${{ matrix.server }}
-          --overlap-policy ${{ matrix.overlap_policy }}
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish lifecycle summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Lifecycle and safety / ${{ matrix.server }}"
-          --run-outcome "${{ steps.lifecycle-tests.outcome }}"
-
-      - name: Upload lifecycle JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: lifecycle-safety-${{ matrix.server }}-${{ github.run_attempt }}
-          path: test-results
-          if-no-files-found: warn
-          retention-days: 14
+          command: |-
+            rc=0
+            bash ./run_lifecycle_tests.sh --server ${{ matrix.server }} || rc=$?
+            bash ./run_config_safety_tests.sh --server ${{ matrix.server }} --overlap-policy ${{ matrix.overlap_policy }} || rc=$?
+            exit $rc
+          title: Lifecycle and safety / ${{ matrix.server }}
+          artifact-name: lifecycle-safety-${{ matrix.server }}-${{ github.run_attempt }}
 
   profile-validation:
     name: Validate conformance profile
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Validate coverage evidence and test tooling
         run: python3 -m unittest discover -s tests
 
   compatibility:
     name: Informational / ${{ matrix.name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -922,118 +495,87 @@ jobs:
             server: isc-dhcpd
             server_version: isc-final
             ip_version: v4
-            extra_args: ""
-            expected_failure: ""
-            expected_log_pattern: ""
+            extra_args: ''
+            expected_failure: ''
             artifact_suffix: full
           - name: ISC DHCP 4.4.3-P1 / v6
             server: isc-dhcpd
             server_version: isc-final
             ip_version: v6
-            extra_args: ""
-            expected_failure: ""
-            expected_log_pattern: ""
+            extra_args: ''
+            expected_failure: ''
             artifact_suffix: full
           - name: Kea 3.0.3 LTS / v4
             server: kea
             server_version: kea-lts
             ip_version: v4
-            extra_args: ""
-            expected_failure: "Server returns configured classless routes in OFFER and ACK"
-            expected_log_pattern: ""
+            extra_args: ''
+            expected_failure: Server returns configured classless routes in OFFER and ACK
             artifact_suffix: full
           - name: Kea 3.0.3 LTS / v6
             server: kea
             server_version: kea-lts
             ip_version: v6
-            extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_isolated"
-            expected_failure: ""
-            expected_log_pattern: ""
+            extra_args: --tags @ipv6 --tags ~@kea3_malformed_relay_isolated
+            expected_failure: ''
             artifact_suffix: full
           - name: Kea 3.0.3 LTS / v6 truncated relay Interface-ID
             server: kea
             server_version: kea-lts
             ip_version: v6
-            extra_args: "--tags @kea3_truncated_interface_id"
-            expected_failure: ""
-            expected_log_pattern: ""
+            extra_args: --tags @kea3_truncated_interface_id
+            expected_failure: ''
             artifact_suffix: truncated-interface-id
           - name: Kea 3.2.0 stable / v4
             server: kea
             server_version: kea-stable
             ip_version: v4
-            extra_args: ""
-            expected_failure: "Server returns configured classless routes in OFFER and ACK"
-            expected_log_pattern: ""
+            extra_args: ''
+            expected_failure: Server returns configured classless routes in OFFER and ACK
             artifact_suffix: full
           - name: Kea 3.2.0 stable / v6
             server: kea
             server_version: kea-stable
             ip_version: v6
-            extra_args: "--tags @ipv6 --tags ~@kea3_malformed_relay_isolated"
-            expected_failure: ""
-            expected_log_pattern: ""
+            extra_args: --tags @ipv6 --tags ~@kea3_malformed_relay_isolated
+            expected_failure: ''
             artifact_suffix: full
           - name: Kea 3.2.0 stable / v6 truncated relay Interface-ID
             server: kea
             server_version: kea-stable
             ip_version: v6
-            extra_args: "--tags @kea3_truncated_interface_id"
-            expected_failure: ""
-            expected_log_pattern: ""
+            extra_args: --tags @kea3_truncated_interface_id
+            expected_failure: ''
             artifact_suffix: truncated-interface-id
           - name: Kea baseline / IPv4 known divergences
             server: kea
             server_version: baseline
             ip_version: v4
-            extra_args: "--tags @known_divergence --tags @ipv4"
-            expected_failure: ""
-            expected_log_pattern: ""
+            extra_args: --tags @known_divergence --tags @ipv4
+            expected_failure: ''
             artifact_suffix: known-divergences
           - name: Kea baseline / IPv6 known divergences
             server: kea
             server_version: baseline
             ip_version: v6
-            extra_args: "--tags @known_divergence --tags @ipv6"
-            expected_failure: ""
-            expected_log_pattern: ""
+            extra_args: --tags @known_divergence --tags @ipv6
+            expected_failure: ''
             artifact_suffix: known-divergences
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Run informational compatibility tests
-        id: compatibility-tests
-        continue-on-error: ${{ matrix.expected_failure != '' }}
-        run: |
-          set -o pipefail
-          bash ./run_dhcp_tests.sh \
-            --server ${{ matrix.server }} \
-            --server-version ${{ matrix.server_version }} \
-            --ip-version ${{ matrix.ip_version }} \
-            ${{ matrix.extra_args }} 2>&1 | tee compatibility.log
-
-      - name: Tear down containers
-        if: always()
-        run: docker compose down
-
-      - name: Publish compatibility summary
-        if: always()
-        run: >-
-          python3 summarize_junit.py
-          --results test-results
-          --title "Informational / ${{ matrix.name }}"
-          --run-outcome "${{ steps.compatibility-tests.outcome }}"
-          ${{ matrix.expected_failure != '' && format('--expected-failure "{0}"', matrix.expected_failure) || '' }}
-          ${{ matrix.expected_log_pattern != '' && format('--log-file compatibility.log --expected-log-pattern {0}', matrix.expected_log_pattern) || '' }}
-
-      - name: Upload compatibility JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/dhcp-suite
         with:
-          name: compatibility-${{ matrix.server_version }}-${{ matrix.ip_version }}-${{ matrix.artifact_suffix }}-${{ github.run_attempt }}
-          path: |
+          command: |-
+            set -o pipefail
+            bash ./run_dhcp_tests.sh \
+              --server ${{ matrix.server }} \
+              --server-version ${{ matrix.server_version }} \
+              --ip-version ${{ matrix.ip_version }} \
+              ${{ matrix.extra_args }} 2>&1 | tee compatibility.log
+          title: Informational / ${{ matrix.name }}
+          artifact-name: compatibility-${{ matrix.server_version }}-${{ matrix.ip_version }}-${{ matrix.artifact_suffix }}-${{ github.run_attempt }}
+          artifact-path: |-
             test-results
             compatibility.log
-          if-no-files-found: warn
-          retention-days: 14
+          expected-failure: ${{ matrix.expected_failure }}
