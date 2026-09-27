@@ -7,10 +7,7 @@ services:
       - storage-fault-backing:/storage-fault-backing
 
   test-runner:
-    image: dhcp-storage-fault-runner:local
-    build:
-      context: .
-      dockerfile: storage-fault-runner.Dockerfile
+    command: ["tail", "-f", "/dev/null"]
 
 volumes:
   storage-fault-backing:

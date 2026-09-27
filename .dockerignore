@@ -1,0 +1,3 @@
+# Only the test-runner image uses the repository root as build context.
+*
+!requirements.txt

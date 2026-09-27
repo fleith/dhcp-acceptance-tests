@@ -150,6 +150,15 @@ print(
 )
 
 result = subprocess.run([sys.executable, '-m', 'behave'] + behave_args, env=env)
+
+# The runner is root; hand the reports back to the owner of the bind-mounted checkout.
+checkout_owner = os.stat('.')
+if checkout_owner.st_uid != os.getuid():
+    for root, _, files in os.walk(results_dir):
+        os.chown(root, checkout_owner.st_uid, checkout_owner.st_gid)
+        for name in files:
+            os.chown(os.path.join(root, name), checkout_owner.st_uid, checkout_owner.st_gid)
+
 if result.returncode == 0 and env.get('TEST_REQUIRE_EXECUTED_SCENARIOS') == '1':
     _, totals, _ = read_reports(Path(results_dir))
     executed = max(

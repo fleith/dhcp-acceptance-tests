@@ -1,9 +1,10 @@
 services:
   ddns-observer:
-    image: python:3.13-slim
-    command: >-
-      bash -c "pip install -r /app/requirements.txt -q &&
-               python3 /app/ddns/observer.py"
+    image: dhcp-test-runner:local
+    build:
+      context: .
+      dockerfile: test-runner.Dockerfile
+    command: ["python3", "/app/ddns/observer.py"]
     environment:
       DDNS_ZONE: ${DHCPV6_DDNS_SUFFIX:-dhcp-acceptance.test}
     volumes:

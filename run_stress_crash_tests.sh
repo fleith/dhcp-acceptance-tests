@@ -117,7 +117,7 @@ STATE_DIR="${SCRIPT_DIR}/test-state"
 STATE_FILE="${STATE_DIR}/dhcpv4-stress-state.json"
 READY_MARKER="${STATE_DIR}/dhcpv4-stress-inflight-ready"
 CRASH_MARKER="${STATE_DIR}/dhcpv4-stress-server-crashed"
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" "${SCRIPT_DIR}/test-results"
 rm -f "$STATE_FILE" "$READY_MARKER" "$CRASH_MARKER"
 
 cleanup() {
@@ -157,11 +157,12 @@ run_phase() {
   TEST_BEHAVE_ARGS="--tags=@orchestrated --tags=@${phase} --no-skipped" \
   TEST_REQUIRE_EXECUTED_SCENARIOS=1 \
   TEST_RESULTS_DIR="/app/test-results/stress-${SERVER}-${SERVER_VERSION}-${PROFILE}-${suffix}" \
-    docker compose "${COMPOSE[@]}" run --rm --no-deps test-runner
+    docker compose "${COMPOSE[@]}" run --rm --no-deps test-runner < /dev/null
 }
 
 echo "[INFO] Starting stress fixture server=${SERVER} version=${SERVER_VERSION} profile=${PROFILE}"
-docker compose "${COMPOSE[@]}" up -d --build dhcp-server
+docker compose "${COMPOSE[@]}" build dhcp-server test-runner
+docker compose "${COMPOSE[@]}" up -d dhcp-server
 wait_for_health
 
 run_phase stress_prepare prepare

@@ -113,7 +113,7 @@ STATE_DIR="${SCRIPT_DIR}/test-state"
 STATE_FILE="${STATE_DIR}/dhcpv4-soak-state.json"
 READY_MARKER="${STATE_DIR}/dhcpv4-soak-ready"
 RESOURCE_FILE="${STATE_DIR}/dhcpv4-soak-resources.ndjson"
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" "${SCRIPT_DIR}/test-results"
 rm -f "$STATE_FILE" "$READY_MARKER" "$RESOURCE_FILE"
 
 cleanup() {
@@ -160,11 +160,12 @@ run_phase() {
   TEST_BEHAVE_ARGS="--tags=@orchestrated --tags=@${phase} --no-skipped" \
   TEST_REQUIRE_EXECUTED_SCENARIOS=1 \
   TEST_RESULTS_DIR="/app/test-results/soak-${SERVER}-${SERVER_VERSION}-${PROFILE}-${suffix}" \
-    docker compose "${COMPOSE[@]}" run --rm --no-deps test-runner
+    docker compose "${COMPOSE[@]}" run --rm --no-deps test-runner < /dev/null
 }
 
 echo "[INFO] Starting soak fixture server=${SERVER} version=${SERVER_VERSION} profile=${PROFILE}"
-docker compose "${COMPOSE[@]}" up -d --build dhcp-server
+docker compose "${COMPOSE[@]}" build dhcp-server test-runner
+docker compose "${COMPOSE[@]}" up -d dhcp-server
 wait_for_health
 
 capture_resource_sample

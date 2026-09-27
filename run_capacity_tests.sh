@@ -131,7 +131,7 @@ esac
 STATE_DIR="${SCRIPT_DIR}/test-state"
 STATE_FILE="${STATE_DIR}/dhcpv4-capacity-state.json"
 RESOURCE_FILE="${STATE_DIR}/dhcpv4-capacity-resources.ndjson"
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" "${SCRIPT_DIR}/test-results"
 rm -f "$STATE_FILE" "$RESOURCE_FILE"
 
 cleanup() {
@@ -166,11 +166,12 @@ run_phase() {
   TEST_BEHAVE_ARGS="--tags=@orchestrated --tags=@${phase} --no-skipped" \
   TEST_REQUIRE_EXECUTED_SCENARIOS=1 \
   TEST_RESULTS_DIR="/app/test-results/capacity-${SERVER}-${SERVER_VERSION}-${PROFILE}-${suffix}" \
-    docker compose "${COMPOSE[@]}" run --rm --no-deps test-runner
+    docker compose "${COMPOSE[@]}" run --rm --no-deps test-runner < /dev/null
 }
 
 echo "[INFO] Starting capacity fixture server=${SERVER} version=${SERVER_VERSION} profile=${PROFILE} pool=${DHCPV4_POOL_START_ADDRESS}-${DHCPV4_POOL_END_ADDRESS}"
-docker compose "${COMPOSE[@]}" up -d --build dhcp-server
+docker compose "${COMPOSE[@]}" build dhcp-server test-runner
+docker compose "${COMPOSE[@]}" up -d dhcp-server
 wait_for_health
 
 capture_resource_sample

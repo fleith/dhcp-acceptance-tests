@@ -3,7 +3,6 @@
 import os
 import shlex
 import subprocess
-import time
 
 from behave import given, then, when
 
@@ -94,12 +93,10 @@ def _different_server_duid():
 
 
 def _send_malformed_transactions(cases, timeout=3):
-    sniffer = _start_v6_sniffer(timeout=timeout)
-    transactions = []
-    for label, packet, trid in cases:
-        sendp(packet, iface=INTERFACE, verbose=False)
-        transactions.append((label, trid))
-        time.sleep(0.1)
+    # The capture window must cover the paced sends plus the reply timeout.
+    sniffer = _start_v6_sniffer(timeout=timeout + 0.1 * len(cases))
+    sendp([packet for _, packet, _ in cases], iface=INTERFACE, inter=0.1, verbose=False)
+    transactions = [(label, trid) for label, _, trid in cases]
     context_storage_v6["malformed_transaction_sniffer"] = sniffer
     context_storage_v6["malformed_transactions"] = transactions
 

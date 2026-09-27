@@ -16,9 +16,9 @@ from dhcpv4_support import (
 )
 
 try:
-    from scapy.all import sendp
+    from scapy.all import conf, sendp
 except ImportError:
-    sendp = None
+    conf = sendp = None
 
 
 INTERFACE = os.getenv("TEST_INTERFACE", "eth0")
@@ -76,9 +76,13 @@ def _capture_exchange(entries, message_types, timeout=CAPTURE_TIMEOUT):
         timeout=timeout,
         stop_filter=stop_filter,
     )
-    for entry in entries:
-        entry["sent_at"] = time.time()
-        sendp(entry["packet"], iface=INTERFACE, verbose=False)
+    with conf.L2socket(iface=INTERFACE) as sock:
+        for entry in entries:
+            entry["sent_at"] = time.time()
+            sock.send(entry["packet"])
+            # A short gap keeps a large batch from arriving as one microburst:
+            # back-to-back REQUESTs intermittently lost an ACK against ISC DHCP.
+            time.sleep(0.002)
     sniffer.join()
     responses = [
         packet
@@ -195,8 +199,7 @@ def _release_packet(lease):
 
 def release_batch(leases):
     assert sendp is not None, "Scapy send support is required for soak tests"
-    for lease in leases:
-        sendp(_release_packet(lease), iface=INTERFACE, verbose=False)
+    sendp([_release_packet(lease) for lease in leases], iface=INTERFACE, verbose=False)
 
 
 def assert_unique(leases, label):

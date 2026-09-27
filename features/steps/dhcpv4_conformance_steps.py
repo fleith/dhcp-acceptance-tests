@@ -133,10 +133,7 @@ def _capture_packets(packets, xid, message_types, mac=None, timeout=3, stop_firs
             candidate, xid, message_types=message_types, mac=mac
         )
     sniffer = start_dhcp_sniffer(INTERFACE, timeout=timeout, stop_filter=stop_filter)
-    for packet in packets:
-        sendp(packet, iface=INTERFACE, verbose=False)
-        if len(packets) > 1:
-            time.sleep(0.12)
+    sendp(packets, iface=INTERFACE, inter=0.12 if len(packets) > 1 else 0, verbose=False)
     sniffer.join()
     return [
         packet
@@ -523,8 +520,7 @@ def _concurrent_offer_wave(held_ip):
             _client_options("discover", requested=held_ip),
         )
     sniffer = start_dhcp_sniffer(INTERFACE, timeout=4)
-    for client in clients:
-        sendp(client["packet"], iface=INTERFACE, verbose=False)
+    sendp([client["packet"] for client in clients], iface=INTERFACE, verbose=False)
     sniffer.join()
     captured = list(sniffer.results or [])
     return [
@@ -635,8 +631,7 @@ def step_concurrent_clients(context):
         for client in clients
     ]
     sniffer = start_dhcp_sniffer(INTERFACE, timeout=5)
-    for packet in discovers:
-        sendp(packet, iface=INTERFACE, verbose=False)
+    sendp(discovers, iface=INTERFACE, verbose=False)
     sniffer.join()
     captured = list(sniffer.results or [])
     for client in clients:
@@ -666,8 +661,7 @@ def step_concurrent_clients(context):
         client["offered_ip"] = offered_ip
 
     ack_sniffer = start_dhcp_sniffer(INTERFACE, timeout=5)
-    for packet in requests:
-        sendp(packet, iface=INTERFACE, verbose=False)
+    sendp(requests, iface=INTERFACE, verbose=False)
     ack_sniffer.join()
     captured_acks = list(ack_sniffer.results or [])
     leases = []
@@ -850,8 +844,7 @@ def _send_malformed_dhcpv4_cases(context, mutations, count, response_key):
             }
         )
     sniffer = start_dhcp_sniffer(INTERFACE, timeout=3)
-    for case in cases:
-        sendp(case["packet"], iface=INTERFACE, verbose=False)
+    sendp([case["packet"] for case in cases], iface=INTERFACE, verbose=False)
     sniffer.join()
     xids = {case["xid"] for case in cases}
     responses = [

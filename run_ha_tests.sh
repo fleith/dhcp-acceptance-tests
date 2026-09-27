@@ -10,7 +10,7 @@ REQUEST="${STATE_DIR}/ha-failover.request"
 COMPLETE="${STATE_DIR}/ha-failover.complete"
 TEST_PID=""
 
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" "${SCRIPT_DIR}/test-results"
 rm -f "$REQUEST" "$COMPLETE"
 
 cleanup() {
@@ -45,7 +45,8 @@ export TEST_REQUIRE_EXECUTED_SCENARIOS=1
 export TEST_BEHAVE_ARGS="--tags=@requires_ha"
 export TEST_RESULTS_DIR=/app/test-results/kea-kea-stable-v4-ha
 
-docker compose "${COMPOSE[@]}" up -d --build dhcp-server dhcp-secondary
+docker compose "${COMPOSE[@]}" build dhcp-server dhcp-secondary test-runner
+docker compose "${COMPOSE[@]}" up -d dhcp-server dhcp-secondary
 wait_for_health dhcp-test-server
 wait_for_health dhcp-test-server-secondary
 
