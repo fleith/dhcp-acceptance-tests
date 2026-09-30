@@ -53,7 +53,10 @@ services:
       start_period: 2s
 
   test-runner:
-    image: python:3.13-slim
+    image: dhcp-test-runner:local
+    build:
+      context: .
+      dockerfile: test-runner.Dockerfile
     container_name: dhcp-test-runner
     privileged: true
     cap_add:
@@ -192,11 +195,6 @@ services:
     volumes:
       - .:/app
     working_dir: /app
-    command: >
-      bash -c "apt-get update -qq &&
-               apt-get install -y --no-install-recommends iproute2 -qq &&
-               pip install -r requirements.txt -q &&
-               python3 run_tests.py"
     depends_on:
       dhcp-server:
         condition: service_healthy

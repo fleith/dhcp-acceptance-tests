@@ -147,6 +147,8 @@ configure_version_profile() {
       ;;
   esac
 
+  # Tag-filtered runs get their own results directory so they don't replace the full run's reports.
+  local tags_suffix=""
   if (( ${#BEHAVE_TAGS[@]} > 0 )); then
     local tag
     local quoted_tag
@@ -154,11 +156,14 @@ configure_version_profile() {
     for tag in "${BEHAVE_TAGS[@]}"; do
       printf -v quoted_tag '%q' "$tag"
       tag_args+=" --tags=${quoted_tag}"
+      tag="${tag//\~@/not-}"
+      tag="${tag// /-}"
+      tags_suffix+="${tags_suffix:+-}${tag//[^A-Za-z0-9_-]/}"
     done
     export TEST_BEHAVE_ARGS="${tag_args# }"
   fi
 
-  local results_suffix="${TEST_RESULTS_RUN_SUFFIX:-}"
+  local results_suffix="${TEST_RESULTS_RUN_SUFFIX:-$tags_suffix}"
   export TEST_RESULTS_DIR="/app/test-results/${SERVER}-${SERVER_VERSION}-${mode}${results_suffix:+-${results_suffix}}"
 }
 
@@ -172,6 +177,9 @@ run_once() {
 
   # Build arguments select the requested server release profile.
   up_args+=(--build)
+
+  # Create bind-mount sources as the invoking user; Docker would create them as root.
+  mkdir -p "${PROJECT_ROOT}/test-state" "${PROJECT_ROOT}/test-results"
 
   echo "[INFO] Running tests against server=${SERVER} ip_version=${mode} version=${VERSION_LABEL}"
   docker compose "${COMPOSE_FILES[@]}" up "${up_args[@]}" "${EXTRA_ARGS[@]}" || rc=$?

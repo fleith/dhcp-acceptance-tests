@@ -8,4 +8,5 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt -q
 
 WORKDIR /app
-CMD ["tail", "-f", "/dev/null"]
+ENV PYTHONDONTWRITEBYTECODE=1
+CMD ["python3", "run_tests.py"]

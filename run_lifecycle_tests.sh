@@ -63,11 +63,14 @@ run_phase() {
     -e TEST_BEHAVE_ARGS="--tags=@${phase}" \
     -e TEST_RESULTS_DIR="/app/test-results/lifecycle-${SERVER}-${suffix}" \
     -e TEST_DHCPV4_CLASS_DOMAIN="$expected_domain" \
-    test-runner
+    test-runner < /dev/null
 }
 
+mkdir -p "${SCRIPT_DIR}/test-state" "${SCRIPT_DIR}/test-results"
+
 echo "[INFO] Starting persistent lifecycle fixture for server=${SERVER}"
-docker compose "${COMPOSE[@]}" up -d --build dhcp-server
+docker compose "${COMPOSE[@]}" build dhcp-server test-runner
+docker compose "${COMPOSE[@]}" up -d dhcp-server
 wait_for_health
 run_phase persistence_prepare prepare
 

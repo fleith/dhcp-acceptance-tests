@@ -42,7 +42,7 @@ expect_startup_rejection() {
   cleanup
   set +e
   timeout 20s env "$@" docker compose "${COMPOSE[@]}" up \
-    --build --no-deps --abort-on-container-exit --exit-code-from dhcp-server \
+    --no-build --no-deps --abort-on-container-exit --exit-code-from dhcp-server \
     dhcp-server
   local rc=$?
   set -e
@@ -66,7 +66,7 @@ probe_overlap_policy() {
   set +e
   timeout 20s env DHCPV4_INJECT_OVERLAPPING_SUBNET=1 \
     docker compose "${COMPOSE[@]}" up \
-    --build --no-deps --abort-on-container-exit --exit-code-from dhcp-server \
+    --no-build --no-deps --abort-on-container-exit --exit-code-from dhcp-server \
     dhcp-server
   local rc=$?
   set -e
@@ -94,6 +94,10 @@ probe_overlap_policy() {
   esac
   echo "[INFO] ${SERVER} satisfied overlap policy=${OVERLAP_POLICY}"
 }
+
+mkdir -p "${SCRIPT_DIR}/test-state"
+# Build outside the 20-second probes so a cold build cache can't eat the window.
+docker compose "${COMPOSE[@]}" build dhcp-server
 
 probe_overlap_policy
 expect_startup_rejection unavailable-lease-storage DHCPV4_FORCE_STORAGE_FAILURE=1

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from behave import given, then, when
 
+from dhcpv4_load_support import capture_exchange, release_batch
 from dhcpv4_support import (
     BOOTP,
     DHCP,
@@ -21,9 +22,9 @@ from dhcpv4_support import (
 )
 
 try:
-    from scapy.all import sendp
+    from scapy.all import conf, sendp
 except ImportError:
-    sendp = None
+    conf = sendp = None
 
 
 INTERFACE = os.getenv("TEST_INTERFACE", "eth0")
@@ -41,6 +42,9 @@ CHURN_ROUNDS = int(os.getenv("TEST_DHCPV4_STRESS_CHURN_ROUNDS", "2"))
 CHURN_BATCH = int(os.getenv("TEST_DHCPV4_STRESS_CHURN_BATCH", "8"))
 CRASH_LOAD_SECONDS = float(
     os.getenv("TEST_DHCPV4_STRESS_CRASH_LOAD_SECONDS", "3")
+)
+CRASH_WAIT_SECONDS = float(
+    os.getenv("TEST_DHCPV4_STRESS_CRASH_WAIT_SECONDS", "30")
 )
 CAPTURE_TIMEOUT = float(os.getenv("TEST_DHCPV4_STRESS_CAPTURE_TIMEOUT", "10"))
 BATCH_DEADLINE = float(os.getenv("TEST_DHCPV4_STRESS_BATCH_DEADLINE", "20"))
@@ -87,42 +91,6 @@ def _matches(packet, clients, message_types):
     return bytes(packet[BOOTP].chaddr)[: len(expected_mac)] == expected_mac
 
 
-def _capture_exchange(entries, message_types, timeout=CAPTURE_TIMEOUT):
-    """Send a batch and stop after each transaction has one matching response."""
-    require_scapy_v4()
-    assert sendp is not None, "Scapy send support is required for stress tests"
-    clients = {entry["xid"]: entry for entry in entries}
-    seen = set()
-
-    def stop_filter(packet):
-        if _matches(packet, clients, message_types):
-            seen.add(packet[BOOTP].xid)
-        return len(seen) == len(clients)
-
-    sniffer = start_dhcp_sniffer(
-        INTERFACE,
-        timeout=timeout,
-        stop_filter=stop_filter,
-    )
-    for entry in entries:
-        entry["sent_at"] = time.time()
-        sendp(entry["packet"], iface=INTERFACE, verbose=False)
-    sniffer.join()
-    responses = [
-        packet
-        for packet in (sniffer.results or [])
-        if _matches(packet, clients, message_types)
-    ]
-    by_xid = {}
-    for packet in responses:
-        by_xid.setdefault(packet[BOOTP].xid, []).append(packet)
-    latencies = []
-    for xid, packets in by_xid.items():
-        first = min(float(packet.time) for packet in packets)
-        latencies.append(max(0.0, (first - clients[xid]["sent_at"]) * 1000.0))
-    return by_xid, latencies
-
-
 def _discover_batch(count):
     used_xids = set()
     clients = [
@@ -139,7 +107,7 @@ def _discover_batch(count):
                 "end",
             ],
         )
-    responses, latencies = _capture_exchange(clients, {2, 5, 6})
+    responses, latencies = capture_exchange(clients, {2, 5, 6}, timeout=CAPTURE_TIMEOUT)
     for client in clients:
         packets = responses.get(client["xid"], [])
         unexpected = [packet for packet in packets if _message_type(packet) in {5, 6}]
@@ -178,7 +146,7 @@ def _commit_batch(count):
     entries = []
     for client in clients:
         entries.append({**client, "packet": _selection_request(client)})
-    responses, ack_latencies = _capture_exchange(entries, {5, 6})
+    responses, ack_latencies = capture_exchange(entries, {5, 6}, timeout=CAPTURE_TIMEOUT)
     leases = []
     for client in clients:
         packets = responses.get(client["xid"], [])
@@ -206,27 +174,6 @@ def _commit_batch(count):
         "commit_ms": ack_latencies,
         "elapsed_seconds": time.monotonic() - started,
     }
-
-
-def _release_packet(lease):
-    return build_client_packet(
-        lease["mac"],
-        lease["xid"],
-        [
-            ("message-type", "release"),
-            ("server_id", lease.get("server_id") or SERVER_IP),
-            "end",
-        ],
-        ciaddr=lease["ip"],
-        source_ip=lease["ip"],
-        destination_ip=lease.get("server_id") or SERVER_IP,
-        flags=0,
-    )
-
-
-def _release_batch(leases):
-    for lease in leases:
-        sendp(_release_packet(lease), iface=INTERFACE, verbose=False)
 
 
 def _load_state():
@@ -355,7 +302,7 @@ def step_prepare_stress(context):
         _assert_unique(leases, f"churn round {round_number}")
         _append_batch_metrics(data, f"churn-{round_number}", metrics)
         data["metrics"]["counts"]["churn_committed"] += len(leases)
-        _release_batch(leases)
+        release_batch(leases)
         time.sleep(0.2)
 
     leases, metrics = _commit_batch(PREPARE_CLIENTS)
@@ -431,25 +378,29 @@ def step_inflight_load(context):
     all_entries = selecting + renewing
     lookup = {entry["xid"]: entry for entry in all_entries}
 
-    sniffer = start_dhcp_sniffer(
-        INTERFACE,
-        timeout=CRASH_LOAD_SECONDS + 1,
-    )
+    sniffer = start_dhcp_sniffer(INTERFACE, timeout=None)
     first_sent = {}
-    deadline = time.monotonic() + CRASH_LOAD_SECONDS
+    load_deadline = time.monotonic() + CRASH_LOAD_SECONDS
+    crash_deadline = load_deadline + CRASH_WAIT_SECONDS
     cycles = 0
-    while time.monotonic() < deadline:
-        cycles += 1
-        for entry in all_entries:
-            first_sent.setdefault(entry["xid"], time.time())
-            sendp(entry["packet"], iface=INTERFACE, verbose=False)
-        if cycles == 1:
-            READY_MARKER.write_text(
-                "allocation, renewal, and retransmission traffic sent\n",
-                encoding="utf-8",
-            )
-        time.sleep(0.1)
-    sniffer.join()
+    # Keep the traffic running until the orchestrator has killed the server:
+    # how long the kill takes after the ready marker depends on the host.
+    with conf.L2socket(iface=INTERFACE) as sock:
+        while time.monotonic() < load_deadline or (
+            not CRASH_MARKER.exists() and time.monotonic() < crash_deadline
+        ):
+            cycles += 1
+            for entry in all_entries:
+                first_sent.setdefault(entry["xid"], time.time())
+                sock.send(entry["packet"])
+            if cycles == 1:
+                READY_MARKER.write_text(
+                    "allocation, renewal, and retransmission traffic sent\n",
+                    encoding="utf-8",
+                )
+            time.sleep(0.1)
+    time.sleep(1)
+    sniffer.stop()
     packets = [
         packet
         for packet in (sniffer.results or [])
@@ -550,7 +501,7 @@ def step_reassert_bindings(context):
                 ),
             }
         )
-    responses, latencies = _capture_exchange(entries, {5, 6})
+    responses, latencies = capture_exchange(entries, {5, 6}, timeout=CAPTURE_TIMEOUT)
     recovered = []
     for xid, lease in original_by_xid.items():
         packets = responses.get(xid, [])
@@ -626,7 +577,7 @@ def step_metrics(context):
 @when("all DHCPv4 stress bindings are released")
 def step_release_stress(context):
     data = _state(context)["data"]
-    _release_batch(data["leases"])
+    release_batch(data["leases"])
     time.sleep(0.2)
     for path in (STATE_FILE, READY_MARKER, CRASH_MARKER):
         path.unlink(missing_ok=True)
