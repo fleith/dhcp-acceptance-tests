@@ -26,7 +26,8 @@ Feature: RFC 4361 node-specific DHCPv4 client identifiers
     When legacy DHCPv4 clients complete DORA without Option 61
     Then chaddr determines each legacy client binding
 
-  @negative
+  # ISC DHCP and Kea treat Option 61 as opaque and commit the truncated identifier.
+  @negative @reference_rfc4361_truncated_identifier_divergence
   Scenario: A truncated Type 255 identifier does not poison a valid client
     When a truncated RFC 4361 identifier is followed by a valid DORA exchange
     Then the truncated RFC 4361 transaction does not receive a DHCPACK

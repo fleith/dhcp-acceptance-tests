@@ -7,7 +7,9 @@ from pathlib import Path
 from behave import given, when, then
 from dhcpv4_support import (
     assert_dhcp_option as _support_assert_dhcp_option,
+    build_client_packet as _support_build_client_packet,
     client_mac as _support_client_mac,
+    context_storage,
     dhcp_option as _support_get_dhcp_option,
     dhcp_options as _support_get_dhcp_options,
     dhcp_packets as _support_dhcp_packets,
@@ -56,11 +58,14 @@ RFC3396_POLICY_DOMAIN = os.getenv(
 )
 EXPECTED_DNS_SERVERS = ("8.8.8.8", "1.1.1.1")
 
-context_storage = {}
-
 
 def _mac_bytes(mac):
     return _support_mac_bytes(mac)
+
+
+def _random_mac(prefix="02:00:00"):
+    rb = os.urandom(3)
+    return f"{prefix}:{rb[0]:02x}:{rb[1]:02x}:{rb[2]:02x}"
 
 
 def _client_mac():
@@ -194,8 +199,7 @@ def _remove_interface_ipv4(ipv4_addr):
 def step_given_server_running(context):
     # Initialise deterministic per-scenario client identity in this module.
     context_storage.clear()
-    rb = os.urandom(3)
-    context_storage['client_mac'] = f"02:00:00:{rb[0]:02x}:{rb[1]:02x}:{rb[2]:02x}"
+    context_storage['client_mac'] = _random_mac()
 
 
 @given('a client holds a lease from the DHCP server')
@@ -309,9 +313,31 @@ def step_when_send_release(context):
     sendp(release, iface=INTERFACE, verbose=False)
 
 
+def _assert_offered_to_new_client(address):
+    """A different client that asks for ``address`` must be offered exactly that address."""
+    mac = _random_mac("02:00:01")
+    xid = int.from_bytes(os.urandom(4), 'big')
+    discover = _support_build_client_packet(
+        mac, xid, [('message-type', 'discover'), ('requested_addr', address), 'end']
+    )
+    sniffer = _support_start_dhcp_sniffer(
+        INTERFACE,
+        stop_filter=lambda p: p.haslayer(BOOTP) and p[BOOTP].xid == xid
+        and _get_dhcp_options_dict(p).get('message-type') == 2,
+    )
+    sendp(discover, iface=INTERFACE, verbose=False)
+    offers = _dhcp_packets(sniffer, msg_type=2, xid=xid, server_id=DHCP_SERVER_IP)
+    assert offers, f"No DHCPOFFER for a new client requesting {address}"
+    offered_ip = offers[0][BOOTP].yiaddr
+    assert offered_ip == address, (
+        f"A new client requesting {address} was offered {offered_ip}; "
+        "the server did not return the address to the pool"
+    )
+
+
 @then('the server marks the IP address as available again')
 def step_then_release_record(context):
-    time.sleep(2)
+    _assert_offered_to_new_client(context_storage['released_ip'])
 
 
 @when('the lease reaches half of its lifetime')
@@ -349,6 +375,11 @@ def step_then_ack_extension(context):
     ack_pkts = _dhcp_packets(sniffer, msg_type=5, xid=xid,
                              server_id=DHCP_SERVER_IP)  # 5 = DHCPACK
     assert ack_pkts, "No DHCPACK received in response to renewal"
+    leased_ip = context_storage.get('offered_ip')
+    acked_ip = ack_pkts[0][BOOTP].yiaddr
+    assert acked_ip == leased_ip, (
+        f"Renewal DHCPACK assigned {acked_ip} instead of extending {leased_ip}"
+    )
     context_storage['lease_start'] = time.time()
 
 
@@ -420,13 +451,7 @@ def step_when_time_elapses(context):
 
 @then('the server reclaims the IP address for reassignment')
 def step_then_reclaim_ip(context):
-    context.execute_steps(
-        """
-        When a client sends a DHCPDISCOVER message
-        Then the client receives a DHCPOFFER with a valid IP address in the subnet
-        And a DHCPACK finalizes the lease
-        """
-    )
+    _assert_offered_to_new_client(context_storage['offered_ip'])
 
 
 # ---------------------------------------------------------------------------
@@ -637,8 +662,7 @@ def step_when_reboot_wrong_subnet(context):
 def step_when_unknown_init_reboot(context):
     if Ether is None:
         raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
-    rb = os.urandom(3)
-    unknown_mac = f"02:00:01:{rb[0]:02x}:{rb[1]:02x}:{rb[2]:02x}"
+    unknown_mac = _random_mac("02:00:01")
     xid = int.from_bytes(os.urandom(4), 'big')
     subnet = ipaddress.ip_network(SUBNET, strict=False)
     pool_start_offset = int(os.getenv("DHCPV4_POOL_START_OFFSET", "100"))
@@ -761,11 +785,7 @@ def step_then_ack_inform(context):
                       f"msg_type={opts.get('message-type')}, opts={p[DHCP].options}")
         print(f"\n[DEBUG INFORM] expected xid={hex(xid)}, "
               f"captured {len(all_dhcp)} DHCP pkts total")
-    if not ack_pkts:
-        context.scenario.skip(
-            "DHCPINFORM unsupported/unreliable in this dhcpd host-network setup"
-        )
-        return
+    assert ack_pkts, f"No DHCPACK from {DHCP_SERVER_IP} for DHCPINFORM"
     opts = _get_dhcp_options_dict(ack_pkts[0])
     assert 'subnet_mask' in opts, \
         f"DHCPACK to INFORM has no subnet_mask option; found: {list(opts.keys())}"
@@ -909,11 +929,10 @@ def step_then_same_ip_offered(context):
     assert offer_pkts, "No DHCPOFFER received after reconnect"
     offered_ip = offer_pkts[0][BOOTP].yiaddr
     released_ip = context_storage.get('released_ip')
-    assert ipaddress.ip_address(offered_ip) in ipaddress.ip_network(SUBNET), \
-        f"Offered IP {offered_ip} not in subnet {SUBNET}"
-    if offered_ip != released_ip:
-        print(f"\n[INFO] Server offered {offered_ip} instead of previous {released_ip}; "
-              "accepting as reusable pool behavior.")
+    # RFC 2131 §4.3.1: offer the client's previous address when it is still available.
+    assert offered_ip == released_ip, (
+        f"Reconnecting client was offered {offered_ip} instead of its released {released_ip}"
+    )
     context_storage['offered_ip'] = offered_ip  # update for the subsequent ACK step
 
 
@@ -1366,8 +1385,7 @@ def step_when_same_client_id_diff_chaddr(context):
         raise RuntimeError("Scapy is required to send DHCP packets; please install scapy.")
     client_id_bytes = context_storage.get('rfc6842_client_id')
     assert client_id_bytes, "Missing RFC 6842 client identifier state"
-    rb = os.urandom(3)
-    mac2 = f"02:00:00:{rb[0]:02x}:{rb[1]:02x}:{rb[2]:02x}"
+    mac2 = _random_mac()
     xid = int.from_bytes(os.urandom(4), 'big')
     discover = (
         Ether(src=mac2, dst="ff:ff:ff:ff:ff:ff") /

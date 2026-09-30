@@ -7,6 +7,9 @@ from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
 
+# Written by run_tests.py: "running" while behave runs, then behave's exit code.
+RUN_STATUS_FILE = "behave-exit-status"
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -14,7 +17,12 @@ def parse_args():
     parser.add_argument("--title", default="DHCP acceptance tests")
     parser.add_argument("--summary-file")
     parser.add_argument("--run-outcome", choices=("success", "failure", "cancelled"))
-    parser.add_argument("--expected-failure-pattern", action="append", default=[])
+    parser.add_argument(
+        "--expected-failure",
+        action="append",
+        default=[],
+        help="Exact name of a scenario that is expected to fail (repeatable).",
+    )
     parser.add_argument("--log-file")
     parser.add_argument("--expected-log-pattern", action="append", default=[])
     return parser.parse_args()
@@ -73,16 +81,28 @@ def read_reports(results_dir):
     return files, totals, failures
 
 
-def classify_failures(failures, patterns):
-    normalized = [pattern.lower() for pattern in patterns if pattern]
+def classify_failures(failures, expected_names):
+    expected_names = {name.strip() for name in expected_names if name.strip()}
     expected = []
     unexpected = []
     for failure in failures:
-        if normalized and any(pattern in failure["detail"].lower() for pattern in normalized):
+        if failure["name"] in expected_names:
             expected.append(failure)
         else:
             unexpected.append(failure)
     return expected, unexpected
+
+
+def incomplete_run_problems(results_dir, totals):
+    """Report runs that stopped before behave finished, or that executed nothing."""
+    problems = [
+        f"behave did not finish in {path.parent}"
+        for path in sorted(results_dir.rglob(RUN_STATUS_FILE))
+        if path.read_text(encoding="utf-8").strip() == "running"
+    ]
+    if totals["tests"] - totals["skipped"] == 0:
+        problems.append("no scenario was executed")
+    return problems
 
 
 def classify_runtime_failure(run_outcome, failures, log_text, patterns):
@@ -111,6 +131,7 @@ def markdown(
     unexpected,
     expected_runtime,
     unexpected_runtime,
+    incomplete,
 ):
     passed = max(
         totals["tests"] - totals["failures"] - totals["errors"] - totals["skipped"],
@@ -139,8 +160,9 @@ def markdown(
     if unexpected_runtime:
         lines.extend(["", "**Unexpected runtime failure**"])
         lines.extend(f"- Missing expected signature: `{pattern}`" for pattern in unexpected_runtime)
-    if not files:
-        lines.extend(["", "No JUnit reports were produced."])
+    if incomplete:
+        lines.extend(["", "**Incomplete run**"])
+        lines.extend(f"- {problem}" for problem in incomplete)
     return "\n".join(lines) + "\n"
 
 
@@ -153,9 +175,8 @@ def main():
     args = parse_args()
     results_dir = Path(args.results)
     files, totals, failures = read_reports(results_dir)
-    expected, unexpected = classify_failures(
-        failures, args.expected_failure_pattern
-    )
+    expected, unexpected = classify_failures(failures, args.expected_failure)
+    incomplete = incomplete_run_problems(results_dir, totals)
     log_text = ""
     if args.log_file and Path(args.log_file).exists():
         log_text = Path(args.log_file).read_text(encoding="utf-8", errors="replace")
@@ -173,6 +194,7 @@ def main():
         unexpected,
         expected_runtime,
         unexpected_runtime,
+        incomplete,
     )
     print(report, end="")
 
@@ -198,7 +220,10 @@ def main():
             f"Missing expected failure signature: {pattern}",
         )
 
-    if unexpected or unexpected_runtime:
+    for problem in incomplete:
+        emit_annotation("error", "Incomplete DHCP test run", problem)
+
+    if unexpected or unexpected_runtime or incomplete:
         return 1
     return 0
 

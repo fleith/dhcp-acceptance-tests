@@ -144,7 +144,8 @@ def _discover(context, mac, client_id=_OPTION_ABSENT):
     }
 
 
-def _request(offer_state, client_id=_OPTION_ABSENT):
+def _send_request(offer_state, client_id=_OPTION_ABSENT):
+    """REQUEST the offered address and return the DHCPACKs for this transaction."""
     packet = build_client_packet(
         offer_state["mac"],
         offer_state["xid"],
@@ -157,7 +158,7 @@ def _request(offer_state, client_id=_OPTION_ABSENT):
     )
     sniffer = start_dhcp_sniffer(INTERFACE)
     _send(packet)
-    acknowledgements = _packets_for_mac(
+    return _packets_for_mac(
         dhcp_packets(
             sniffer,
             5,
@@ -166,6 +167,10 @@ def _request(offer_state, client_id=_OPTION_ABSENT):
         ),
         offer_state["mac"],
     )
+
+
+def _request(offer_state, client_id=_OPTION_ABSENT):
+    acknowledgements = _send_request(offer_state, client_id)
     assert acknowledgements, (
         f"No DHCPACK from {offer_state['server_id']} for transaction "
         f"0x{offer_state['xid']:08x}"
@@ -319,11 +324,18 @@ def step_when_truncated_identifier_precedes_valid_dora(context):
         for packet in malformed_responses
         if dhcp_options(packet).get("message-type") == 2
     ]
-    malformed_acks = [
-        packet
-        for packet in malformed_responses
-        if dhcp_options(packet).get("message-type") == 5
-    ]
+    malformed_acks = []
+    if malformed_offers:
+        # A server that offers anyway must still refuse to commit the identifier.
+        malformed_acks = _send_request(
+            {
+                "mac": mac,
+                "xid": xid,
+                "server_id": DHCP_SERVER_IP,
+                "offered_ip": malformed_offers[0][BOOTP].yiaddr,
+            },
+            truncated_id,
+        )
 
     valid_id = _client_identifier(iaid, _new_duid(context))
     context.rfc4361["truncated_outcome"] = (

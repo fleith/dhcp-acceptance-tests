@@ -224,3 +224,21 @@ def step_then_reply_extends_lease(context):
     assert getattr(renewed_ia, "iaid", None) == _iaid(), (
         "DHCPv6 RENEW REPLY IA_NA does not match the requested IAID"
     )
+    leased_ip = context_storage_v6["leased_ipv6"]
+    ia_options = renewed_ia.ianaopts
+    extended = [
+        option for option in ia_options
+        if isinstance(option, _cls("DHCP6OptIAAddress"))
+        and option.addr == leased_ip
+        and option.validlft > 0
+    ]
+    assert extended, (
+        f"DHCPv6 RENEW REPLY did not extend {leased_ip} with a nonzero valid lifetime"
+    )
+    failed_status = [
+        option.statuscode for option in ia_options
+        if isinstance(option, _cls("DHCP6OptStatusCode")) and option.statuscode != 0
+    ]
+    assert not failed_status, (
+        f"DHCPv6 RENEW REPLY IA_NA carries failure status {failed_status}"
+    )
