@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export TEST_REQUIRE_EXECUTED_SCENARIOS=1
 export TEST_RESULTS_RUN_SUFFIX=reserved-iid-pools

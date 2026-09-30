@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 required=(
   TEST_DHCPV6_GENERATION_RESTART_COMMAND

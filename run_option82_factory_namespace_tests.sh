@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export TEST_CAPABILITIES="option82_factory_namespaces"
 if [[ -n "${TEST_FACTORY_LIFECYCLE_COMMAND:-}" ]]; then

@@ -4,12 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-case "$(uname -s)" in
-  MINGW*|MSYS*)
-    export MSYS2_ENV_CONV_EXCL="TEST_RESULTS_DIR${MSYS2_ENV_CONV_EXCL:+;${MSYS2_ENV_CONV_EXCL}}"
-    ;;
-esac
+source "${SCRIPT_DIR}/lib/common.sh"
 
 SERVER="isc-dhcpd"
 SERVER_VERSION="baseline"
@@ -41,43 +36,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-COMPOSE=(-f "${SCRIPT_DIR}/docker-compose.yml")
-case "$SERVER" in
-  isc-dhcpd)
-    case "$SERVER_VERSION" in
-      baseline) ;;
-      isc-final)
-        export ISC_DHCP_BASE_IMAGE="debian:bookworm-slim"
-        ;;
-      *)
-        echo "[ERROR] ISC DHCP requires baseline or isc-final"
-        exit 2
-        ;;
-    esac
-    ;;
-  kea)
-    COMPOSE+=(-f "${SCRIPT_DIR}/docker-compose.kea.yml")
-    case "$SERVER_VERSION" in
-      baseline) ;;
-      kea-lts)
-        export KEA_BASE_IMAGE="docker.cloudsmith.io/isc/docker/kea-dhcp4:3.0.3"
-        export KEA_INSTALL_MODE="alpine"
-        ;;
-      kea-stable)
-        export KEA_BASE_IMAGE="docker.cloudsmith.io/isc/docker/kea-dhcp4:3.2.0"
-        export KEA_INSTALL_MODE="alpine"
-        ;;
-      *)
-        echo "[ERROR] Kea requires baseline, kea-lts, or kea-stable"
-        exit 2
-        ;;
-    esac
-    ;;
-  *)
-    echo "[ERROR] Unsupported server '$SERVER'. Use isc-dhcpd or kea."
-    exit 2
-    ;;
-esac
+select_server_profile "$SERVER" "$SERVER_VERSION"
 COMPOSE+=(-f "${SCRIPT_DIR}/docker-compose.capacity.yml")
 
 export DHCPV4_ALT_POOL_ENABLED=0
@@ -131,27 +90,14 @@ esac
 STATE_DIR="${SCRIPT_DIR}/test-state"
 STATE_FILE="${STATE_DIR}/dhcpv4-capacity-state.json"
 RESOURCE_FILE="${STATE_DIR}/dhcpv4-capacity-resources.ndjson"
-mkdir -p "$STATE_DIR" "${SCRIPT_DIR}/test-results"
+ensure_host_dirs
 rm -f "$STATE_FILE" "$RESOURCE_FILE"
 
 cleanup() {
-  docker compose "${COMPOSE[@]}" down >/dev/null 2>&1 || true
+  compose_down
   rm -f "$STATE_FILE" "$RESOURCE_FILE"
 }
 trap cleanup EXIT
-
-wait_for_health() {
-  local attempt
-  for attempt in $(seq 1 60); do
-    if [[ "$(docker inspect --format '{{.State.Health.Status}}' dhcp-test-server 2>/dev/null || true)" == "healthy" ]]; then
-      return 0
-    fi
-    sleep 0.5
-  done
-  docker compose "${COMPOSE[@]}" logs --no-color dhcp-server
-  echo "[ERROR] DHCP server did not become healthy"
-  return 1
-}
 
 capture_resource_sample() {
   local sample

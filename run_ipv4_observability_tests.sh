@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER="isc-dhcpd"
 SERVER_VERSION=""
 
@@ -45,7 +45,6 @@ case "$SERVER" in
     ;;
 esac
 
-mkdir -p "${SCRIPT_DIR}/test-state"
 rm -f "${SCRIPT_DIR}/test-state/dhcpv4-server.log"
 
 echo "[INFO] Observing DHCPDECLINE notification for ${SERVER}/${SERVER_VERSION}"

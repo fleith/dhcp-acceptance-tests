@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -z "${TEST_RECONFIGURE_TRIGGER_COMMAND:-}" ]]; then
   echo "[ERROR] TEST_RECONFIGURE_TRIGGER_COMMAND is required." >&2

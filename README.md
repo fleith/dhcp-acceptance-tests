@@ -12,6 +12,22 @@ Behavior-driven acceptance tests for DHCP servers using [Behave](https://behave.
 
 ## Running the tests
 
+### Prerequisites
+
+- Docker Engine with the Compose v2 plugin (`docker compose version`). Recent
+  Compose releases refuse to build unless buildx is 0.17 or later
+  (`docker buildx version`); install newer plugins from the official Docker
+  release binaries if your distribution ships older ones.
+- Privileged containers (the runner sends raw DHCP frames; the storage-fault
+  profile also needs loop devices).
+- bash 4.4 or later and GNU `timeout` on the host (on macOS, install them with
+  Homebrew).
+- Python 3.9 or later on the host only for `summarize_junit.py` and the unit
+  tests in `tests/`; the test runner image installs `requirements.txt` itself.
+
+The scripts create `test-state/` and `test-results/` as the invoking user. If an
+older run left them owned by root, remove them once with `sudo rm -rf test-state test-results`.
+
 The recommended entrypoint is the helper script:
 
 ```bash
@@ -112,6 +128,10 @@ bash ./run_dhcpv6_reserved_iid_tests.sh
 
 # RFC 9915 REQUEST regeneration using bundled Kea matching-event evidence
 bash ./run_dhcpv6_request_regeneration_tests.sh
+
+# The target-service examples below take a compose override that you provide
+# (named docker-compose.target.yml here; it is not part of this repository).
+# It replaces dhcp-server with your service and mounts your adapter commands.
 
 # A target service can replace the matching-event counter adapter and topology
 TEST_DHCPV6_REQUEST_COUNTER_COMMAND=/app/adapter/request-count \
@@ -486,9 +506,12 @@ dhcp-acceptance-tests/
 |-- run_multi_interface_tests.sh
 |-- run_ha_tests.sh
 |-- run_tests.py
+|-- lib/common.sh              # server profiles and helpers shared by run_*.sh
+|-- test-runner.Dockerfile
 |-- summarize_junit.py
 |-- tests/test_summarize_junit.py
 |-- .github/workflows/ci.yml
+|-- .github/actions/dhcp-suite/action.yml
 `-- requirements.txt
 ```
 

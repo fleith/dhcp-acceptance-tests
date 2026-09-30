@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export TEST_CAPABILITIES="dhcpv6_rapid_commit,dhcpv6_ddns"
 export TEST_REQUIRE_EXECUTED_SCENARIOS=1

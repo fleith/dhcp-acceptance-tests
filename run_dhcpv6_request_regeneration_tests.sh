@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -z "${TEST_DHCPV6_REQUEST_COUNTER_COMMAND:-}" ]]; then
   export TEST_DHCPV6_REQUEST_COUNTER_COMMAND="python3 /app/adapters/kea_dhcpv6_request_counter.py"

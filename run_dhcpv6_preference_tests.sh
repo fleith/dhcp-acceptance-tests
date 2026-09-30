@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export DHCPV6_PREFERENCE="${DHCPV6_PREFERENCE:-200}"
 export TEST_DHCPV6_EXPECTED_PREFERENCE="$DHCPV6_PREFERENCE"

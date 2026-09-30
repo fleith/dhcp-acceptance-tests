@@ -3,7 +3,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
 SERVER="isc-dhcpd"
 OVERLAP_POLICY="reject"
 
@@ -24,15 +25,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-COMPOSE=(-f "${SCRIPT_DIR}/docker-compose.yml")
-case "$SERVER" in
-  isc-dhcpd) ;;
-  kea) COMPOSE+=(-f "${SCRIPT_DIR}/docker-compose.kea.yml") ;;
-  *) echo "[ERROR] Unsupported server '$SERVER'"; exit 2 ;;
-esac
+select_server_profile "$SERVER" baseline
 
 cleanup() {
-  docker compose "${COMPOSE[@]}" down >/dev/null 2>&1 || true
+  compose_down
 }
 trap cleanup EXIT
 
@@ -95,7 +91,7 @@ probe_overlap_policy() {
   echo "[INFO] ${SERVER} satisfied overlap policy=${OVERLAP_POLICY}"
 }
 
-mkdir -p "${SCRIPT_DIR}/test-state"
+ensure_host_dirs
 # Build outside the 20-second probes so a cold build cache can't eat the window.
 docker compose "${COMPOSE[@]}" build dhcp-server
 
